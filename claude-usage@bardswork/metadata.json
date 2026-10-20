@@ -1,0 +1,6 @@
+{
+  "uuid": "claude-usage@bardswork",
+  "name": "Claude Usage",
+  "description": "Shows Claude plan usage (5-hour and weekly) in the top bar, from the Claude Code status line.",
+  "shell-version": ["50"]
+}
