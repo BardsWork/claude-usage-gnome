@@ -1,0 +1,16 @@
+# Packed extension zips (gnome-extensions pack)
+*.shell-extension.zip
+*.zip
+
+# Compiled GSettings schemas
+gschemas.compiled
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Local Claude Code settings
+.claude/settings.local.json

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Troubleshooting guide
+    url: https://github.com/BardsWork/claude-usage-gnome/blob/main/docs/troubleshooting.md
+    about: Common problems (no data, ERROR state, numbers not updating) and their fixes

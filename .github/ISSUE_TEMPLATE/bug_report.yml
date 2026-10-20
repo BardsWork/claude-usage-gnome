@@ -1,0 +1,56 @@
+name: Bug report
+description: The extension shows the wrong numbers, fails to load, or misbehaves
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: gnome
+    attributes:
+      label: GNOME Shell version
+      description: Output of `gnome-shell --version`
+      placeholder: GNOME Shell 50.1
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution
+      placeholder: Ubuntu 26.04
+  - type: input
+    id: claude
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Session type
+      options: [Wayland, X11, Not sure]
+  - type: textarea
+    id: info
+    attributes:
+      label: Extension state
+      description: Output of `gnome-extensions info claude-usage@bardswork`
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Shell log
+      description: Output of `journalctl --user -b | grep -i claude-usage`
+      render: text
+  - type: textarea
+    id: data
+    attributes:
+      label: Saved status line data
+      description: |
+        Output of `jq .rate_limits ~/.cache/claude-usage/statusline.json`.
+        Paste only `rate_limits`: the full file includes your working directory and session details.
+      render: json
