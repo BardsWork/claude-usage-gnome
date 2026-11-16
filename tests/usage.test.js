@@ -2,7 +2,7 @@
 import GLib from 'gi://GLib';
 import System from 'system';
 
-import {readUsage, resetText, windowText} from '../claude-usage@bardswork/usage.js';
+import {fableWindow, readFable, readUsage, resetText, windowText} from '../claude-usage@bardswork/usage.js';
 
 let failed = 0;
 function test(name, fn) {
@@ -54,6 +54,42 @@ test('readUsage: reads rate limits and modified time', () => {
 test('readUsage: no rate_limits gives empty limits', () => {
     GLib.file_set_contents(path, JSON.stringify({model: {id: 'x'}}));
     equal(readUsage(path).limits, {});
+});
+
+const report = {limits: [
+    {kind: 'session', group: 'session', percent: 81, resets_at: '2026-10-20T14:00:00+00:00', scope: null},
+    {kind: 'weekly_all', group: 'weekly', percent: 12, resets_at: '2026-10-23T21:00:00+00:00', scope: null},
+    {kind: 'weekly_scoped', group: 'weekly', percent: 15, resets_at: '2026-10-23T21:00:00.228189+00:00',
+        scope: {model: {id: null, display_name: 'Fable'}, surface: null}},
+]};
+
+test('fableWindow: picks the Fable weekly row', () => equal(fableWindow(report), {used_percentage: 15, resets_at: 1792789200}));
+test('fableWindow: works with the status line helpers', () => {
+    const win = fableWindow(report);
+    equal(windowText(win, NOW), '15%');
+    equal(resetText(win, NOW), 'Fri 21:00 (in 3d 9h)');
+});
+test('fableWindow: no Fable row gives null', () => equal(fableWindow({limits: report.limits.slice(0, 2)}), null));
+test('fableWindow: ignores other scoped models', () => equal(fableWindow({limits: [
+    {kind: 'weekly_scoped', percent: 40, resets_at: null, scope: {model: {display_name: 'Sonnet'}}},
+]}), null));
+test('fableWindow: no reset time', () => equal(fableWindow({limits: [
+    {kind: 'weekly_scoped', percent: 3, resets_at: null, scope: {model: {display_name: 'Fable'}}},
+]}), {used_percentage: 3, resets_at: null}));
+test('fableWindow: missing or odd report gives null', () => {
+    equal(fableWindow(null), null);
+    equal(fableWindow({}), null);
+    equal(fableWindow({limits: [null, 'x']}), null);
+});
+
+test('readFable: missing file returns null', () => equal(readFable(path), null));
+test('readFable: reads the saved report', () => {
+    GLib.file_set_contents(path, JSON.stringify(report));
+    equal(readFable(path), {used_percentage: 15, resets_at: 1792789200});
+});
+test('readFable: half-written file returns null', () => {
+    GLib.file_set_contents(path, '{"limits": [{"kind"');
+    equal(readFable(path), null);
 });
 
 GLib.unlink(path);

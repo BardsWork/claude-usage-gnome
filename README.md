@@ -8,9 +8,9 @@ A GNOME Shell extension that shows your Claude Pro or Max plan usage in the top 
 
 ![The extension in the GNOME top bar with its menu open, showing 33% of the 5-hour window and 63% of the weekly limit used](docs/screenshot.png)
 
-The first number is your 5-hour session window. The second is your weekly limit. Click it to see when each one resets and how old the numbers are.
+The first number is your 5-hour session window. The second is your weekly limit. Click it to see when each one resets and how old the numbers are, plus your Fable weekly limit and when it resets, if you turn that on.
 
-- No login, no API key, no network calls. It reads a file that Claude Code's status line writes.
+- No login, no API key, no network calls in the extension. It reads files that Claude Code's status line writes.
 - About 100 lines of JavaScript, with unit tests and a headless GNOME Shell test.
 
 ## How it works
@@ -33,6 +33,15 @@ Because of this:
 - After a window's reset time passes, it shows 0% until Claude Code reports again.
 - `rate_limits` only appears when Claude Code is signed in with a Claude subscription (Pro or Max), not with an API key.
 
+### Fable weekly limit (optional)
+
+The status line JSON has no Fable window. It's only in the usage report that `/usage` reads from `https://api.anthropic.com/api/oauth/usage`. The second part of `statusline-snippet.sh` fetches that report, at most once every 5 minutes, using the OAuth token Claude Code saves in `~/.claude/.credentials.json`, and saves it to `~/.cache/claude-usage/usage.json`. The extension adds a "Fable weekly" row with its reset time to the menu when the file has one.
+
+- It needs `curl` and `jq`, and runs in the background so the status line never waits for it.
+- The token is only sent to Anthropic's API, the same request Claude Code makes for `/usage`. It doesn't go through the process list or into any file.
+- If you don't want this, leave out that part of the snippet. The menu then has no Fable row and everything else works as before.
+- Like the rest, it only updates while Claude Code is running.
+
 ## Requirements
 
 - GNOME Shell 50 (tested on Ubuntu 26.04). Other versions from 45 on may work: add them to `shell-version` in `metadata.json` and test.
@@ -47,7 +56,7 @@ Because of this:
    cd claude-usage-gnome
    ```
 
-2. Add the two lines from `statusline-snippet.sh` to your status line script, right after it reads stdin into `$data`.
+2. Add the lines from `statusline-snippet.sh` to your status line script, right after it reads stdin into `$data`. The first two save the status line JSON. The block after them is the optional [Fable fetch](#fable-weekly-limit-optional).
 
    If you don't have a status line script yet, this one works. Save it as `~/.claude/statusline.sh` and make it executable with `chmod +x`:
 
@@ -95,7 +104,7 @@ gnome-extensions disable claude-usage@bardswork
 rm ~/.local/share/gnome-shell/extensions/claude-usage@bardswork
 ```
 
-Then remove the two lines from your status line script.
+Then remove the snippet from your status line script, and delete `~/.cache/claude-usage`.
 
 ## Docs
 
