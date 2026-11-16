@@ -12,6 +12,12 @@ The first number is your 5-hour session window. The second is your weekly limit.
 
 If you turn on the [usage report fetch](#fable-weekly-limit-optional), the menu also has your Fable weekly limit, any limit resets you have left to use, and where your weekly usage went (Claude Code, chats, Cowork). The label then also turns yellow when the server marks a limit as anything other than normal, and the limit that applies right now is shown in bold.
 
+### Current session
+
+Below the limits, the menu shows the Claude Code session that refreshed the status line last: project, model, how full its context is, and what it has cost at API prices, for example `my-repo · Opus 5.5 · context 16% of 1M · $4.70 at API prices`. On a Pro or Max plan you don't pay that cost. It's what the same work would cost through the API. Below that, `Prompt cache: warm for 42m · 99% hits` says how long the session's prompt cache stays warm, or `cold since <time>` once it has expired.
+
+With several sessions open, this is whichever one refreshed last. Both rows dim when the status line is more than 15 minutes old, since the session has probably ended.
+
 ### Pace
 
 Each row says whether you're below, on, or above pace: your % used against the % of the window that has passed. Above pace, it also says when you'd hit the limit at that rate, for example `above pace, limit around Wed 18:20`. It shows nothing in the first 10% of a window, where the rate is too noisy to mean much.

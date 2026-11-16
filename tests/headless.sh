@@ -28,8 +28,10 @@ cp -r "$repo/$uuid" "$XDG_DATA_HOME/gnome-shell/extensions/"
 
 if [[ "${1:-}" != "--no-data" ]]; then
     now=$(date +%s)
-    printf '{"rate_limits":{"five_hour":{"used_percentage":33,"resets_at":%d},"seven_day":{"used_percentage":63,"resets_at":%d}}}' \
-        $((now + 7200)) $((now + 300000)) > "$XDG_CACHE_HOME/claude-usage/statusline.json"
+    printf '{"rate_limits":{"five_hour":{"used_percentage":33,"resets_at":%d},"seven_day":{"used_percentage":63,"resets_at":%d}},%s,"prompt_cache":{"warm":true,"expires_at":%d,"hit_ratio":0.95}}' \
+        $((now + 7200)) $((now + 300000)) \
+        '"workspace":{"project_dir":"/tmp/my-repo"},"model":{"display_name":"Opus 5.5"},"context_window":{"used_percentage":16,"context_window_size":1000000},"cost":{"total_cost_usd":4.7}' \
+        $((now + 2520)) > "$XDG_CACHE_HOME/claude-usage/statusline.json"
     week_resets=$(date -u -d @$((now + 300000)) +%Y-%m-%dT%H:%M:%S+00:00)
     printf '{"limits":[%s,%s,%s],"seven_day_breakdown":{"rows":[%s,%s]},%s,%s}' \
         '{"kind":"session","group":"session","percent":33,"severity":"normal","is_active":false}' \
