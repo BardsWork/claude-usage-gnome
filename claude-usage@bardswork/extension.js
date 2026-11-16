@@ -7,7 +7,9 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {DEFAULT_FILE, USAGE_REPORT_FILE, readFable, readUsage, resetText, windowText} from './usage.js';
+import {
+    DEFAULT_FILE, USAGE_REPORT_FILE, readFable, readResets, readUsage, resetText, resetsText, windowText,
+} from './usage.js';
 
 const REFRESH_SECONDS = 30;
 // Older than this, the numbers may be out of date (no Claude Code session running)
@@ -24,10 +26,14 @@ export default class ClaudeUsageExtension extends Extension {
         // Only shown when the status line hook has saved a usage report with a Fable window
         this._fableItem = new PopupMenu.PopupMenuItem('', {reactive: false});
         this._fableItem.visible = false;
+        // Only shown when the saved usage report lists limit resets left to use
+        this._resetsItem = new PopupMenu.PopupMenuItem('', {reactive: false});
+        this._resetsItem.visible = false;
         this._ageItem = new PopupMenu.PopupMenuItem('', {reactive: false});
         this._button.menu.addMenuItem(this._fiveItem);
         this._button.menu.addMenuItem(this._weekItem);
         this._button.menu.addMenuItem(this._fableItem);
+        this._button.menu.addMenuItem(this._resetsItem);
         this._button.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._button.menu.addMenuItem(this._ageItem);
 
@@ -54,6 +60,7 @@ export default class ClaudeUsageExtension extends Extension {
             this._fiveItem.label.text = '';
             this._weekItem.label.text = '';
             this._fableItem.visible = false;
+            this._resetsItem.visible = false;
             this._ageItem.label.text = 'No data yet: start Claude Code';
             return;
         }
@@ -69,6 +76,9 @@ export default class ClaudeUsageExtension extends Extension {
         const fable = readFable(USAGE_REPORT_FILE);
         this._fableItem.visible = fable !== null;
         if (fable) this._fableItem.label.text = `Fable weekly: ${windowText(fable, now)} used, resets ${resetText(fable, now)}`;
+        const resets = readResets(USAGE_REPORT_FILE, now);
+        this._resetsItem.visible = resets.length > 0;
+        if (resets.length) this._resetsItem.label.text = `Limit resets: ${resetsText(resets)}`;
 
         this._ageItem.label.text = `Updated ${Math.round(age / 60)} min ago (from Claude Code)`;
     }

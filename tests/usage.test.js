@@ -2,7 +2,9 @@
 import GLib from 'gi://GLib';
 import System from 'system';
 
-import {fableWindow, readFable, readUsage, resetText, windowText} from '../claude-usage@bardswork/usage.js';
+import {
+    fableWindow, readFable, readResets, readUsage, resetGrants, resetText, resetsText, windowText,
+} from '../claude-usage@bardswork/usage.js';
 
 let failed = 0;
 function test(name, fn) {
@@ -90,6 +92,50 @@ test('readFable: reads the saved report', () => {
 test('readFable: half-written file returns null', () => {
     GLib.file_set_contents(path, '{"limits": [{"kind"');
     equal(readFable(path), null);
+});
+
+const grant = {
+    id: 'full-reset-2610', label: 'One full limit reset', resets_total: 1, resets_left: 1,
+    starts_at: '2026-10-10T21:30:00+00:00', ends_at: '2026-11-10T22:00:00+00:00',
+    clears: ['five_hour', 'seven_day'], paused: false, usable_now: true, type: 'full',
+};
+const withResets = {...report, cedar_ember: {eligible: true, grants: [
+    grant,
+    {...grant, id: 'used', resets_left: 0},
+    {...grant, id: 'expired', ends_at: '2026-10-20T11:00:00+00:00'},
+    {...grant, id: 'paused', paused: true},
+    {...grant, id: 'session', type: 'session', resets_left: 2, ends_at: null},
+]}};
+
+test('resetGrants: keeps grants with resets left', () => equal(resetGrants(withResets, NOW), [
+    {kind: 'full', left: 1, ends_at: 1794348000},
+    {kind: '5-hour', left: 2, ends_at: null},
+]));
+test('resetGrants: unknown type is a limit reset', () =>
+    equal(resetGrants({cedar_ember: {grants: [{...grant, type: 'new_kind'}]}}, NOW), [
+        {kind: 'limit', left: 1, ends_at: 1794348000},
+    ]));
+test('resetGrants: no cedar_ember or odd data gives none', () => {
+    equal(resetGrants(report, NOW), []);
+    equal(resetGrants(null, NOW), []);
+    equal(resetGrants({cedar_ember: null}, NOW), []);
+    equal(resetGrants({cedar_ember: {eligible: false, grants: []}}, NOW), []);
+    equal(resetGrants({cedar_ember: {grants: [null, 'x', {resets_left: '1'}]}}, NOW), []);
+});
+test('resetsText: one line per grant', () => equal(resetsText(resetGrants(withResets, NOW)),
+    '1 full reset, use by Tue Nov 10; 2 5-hour resets'));
+
+test('readResets: missing file gives none', () => {
+    GLib.unlink(path);
+    equal(readResets(path, NOW), []);
+});
+test('readResets: reads the saved report', () => {
+    GLib.file_set_contents(path, JSON.stringify(withResets));
+    equal(readResets(path, NOW).length, 2);
+});
+test('readResets: half-written file gives none', () => {
+    GLib.file_set_contents(path, '{"cedar_ember": {"gra');
+    equal(readResets(path, NOW), []);
 });
 
 GLib.unlink(path);

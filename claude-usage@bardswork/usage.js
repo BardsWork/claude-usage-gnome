@@ -61,3 +61,41 @@ export function resetText(win, now) {
         : `${Math.floor(mins / 60)}h ${mins % 60}m`;
     return `${at} (in ${left})`;
 }
+
+const RESET_KINDS = {session: '5-hour', weekly: 'weekly', full: 'full'};
+
+/**
+ * The limit resets left to use (the ones /limit-reset spends), from a saved usage report's
+ * cedar_ember field: [{kind, left, ends_at}] with ends_at in Unix seconds or null. Grants that
+ * are used up, paused or past their end date are left out. Empty if there are none.
+ */
+export function resetGrants(report, now) {
+    const grants = report?.cedar_ember?.grants;
+    if (!Array.isArray(grants)) return [];
+    return grants.flatMap(g => {
+        if (!Number.isInteger(g?.resets_left) || g.resets_left < 1 || g.paused) return [];
+        const ends = g.ends_at ? GLib.DateTime.new_from_iso8601(g.ends_at, null) : null;
+        const ends_at = ends ? ends.to_unix() : null;
+        if (ends_at !== null && ends_at <= now) return [];
+        return [{kind: RESET_KINDS[g.type] ?? 'limit', left: g.resets_left, ends_at}];
+    });
+}
+
+/** Reads the limit resets left from the saved usage report. Empty if missing or unreadable. */
+export function readResets(path, now) {
+    try {
+        const [, bytes] = Gio.File.new_for_path(path).load_contents(null);
+        return resetGrants(JSON.parse(new TextDecoder().decode(bytes)), now);
+    } catch {
+        return [];
+    }
+}
+
+/** Limit resets as one line, for example "1 full reset, use by Thu Dec 10". */
+export function resetsText(grants) {
+    return grants.map(g => {
+        const what = `${g.left} ${g.kind} reset${g.left === 1 ? '' : 's'}`;
+        if (g.ends_at === null) return what;
+        return `${what}, use by ${GLib.DateTime.new_from_unix_local(g.ends_at).format('%a %b %-d')}`;
+    }).join('; ');
+}

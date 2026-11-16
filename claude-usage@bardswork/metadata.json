@@ -1,7 +1,7 @@
 {
   "uuid": "claude-usage@bardswork",
   "name": "Claude Usage",
-  "description": "Shows Claude plan usage (5-hour, weekly and Fable weekly) in the top bar, from the Claude Code status line.",
+  "description": "Shows Claude plan usage (5-hour, weekly, Fable weekly and limit resets) in the top bar, from the Claude Code status line.",
   "shell-version": ["50"],
   "url": "https://github.com/BardsWork/claude-usage-gnome"
 }

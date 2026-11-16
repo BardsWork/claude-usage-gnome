@@ -49,6 +49,19 @@ jq '.limits[] | select(.kind == "weekly_scoped")' ~/.cache/claude-usage/usage.js
 - **Nothing printed:** your plan has no separate Fable weekly limit, so there's nothing to show.
 - **The file stopped updating:** Claude Code's saved token may have expired. It refreshes the token on its own the next time it calls the API, so the next fetch usually works.
 
+## The menu has no limit resets row
+
+The row only shows when the saved usage report lists a reset you can still use. Check:
+
+```bash
+jq '.cedar_ember | {eligible, ineligible_reason, grants: [.grants[]? | {label, resets_left, ends_at}]}' ~/.cache/claude-usage/usage.json
+```
+
+- **No such file:** see [The menu has no Fable row](#the-menu-has-no-fable-row). Both rows come from the same fetch.
+- **`eligible` is `null`:** the report has no `cedar_ember` field, because your status line script has the older Fable block. Copy the block from the current `statusline-snippet.sh`, which asks for `cedar_ember=1`.
+- **`ineligible_reason` is `surface` or `cli_version`:** the request didn't send Claude Code's User-Agent, or the version in it was missing. Copy the current block, and check that `jq -r .version ~/.cache/claude-usage/statusline.json` prints a version.
+- **No grants, or `resets_left` is 0 everywhere:** you have no resets to use right now, so there's nothing to show.
+
 ## The label is dimmed
 
 The numbers are more than 15 minutes old. No Claude Code session has refreshed its status line since then. It brightens again the next time one does.
