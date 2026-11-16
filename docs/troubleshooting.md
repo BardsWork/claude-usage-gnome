@@ -19,7 +19,7 @@ The extension can't read `~/.cache/claude-usage/statusline.json`. Either the fil
    }
    ```
 
-2. Check that the two lines from `statusline-snippet.sh` come **after** the line that reads stdin (`data=$(cat)`). If they come before it, `$data` is empty and the file holds nothing.
+2. Check that the lines from `statusline-snippet.sh` come **after** the line that reads stdin (`data=$(cat)`). If they come before it, `$data` is empty and the file holds nothing.
 
 3. Start a Claude Code session and send one message. The status line refreshes after each response, and the file should appear:
 
@@ -36,6 +36,18 @@ jq .rate_limits ~/.cache/claude-usage/statusline.json
 ```
 
 If it prints `null`, Claude Code isn't reporting plan limits. That happens when it is signed in with an API key instead of a Claude Pro or Max subscription. Run `/login` in Claude Code and pick your subscription account.
+
+## The menu has no Fable row
+
+The row only shows when `~/.cache/claude-usage/usage.json` exists and has a Fable weekly window. Check:
+
+```bash
+jq '.limits[] | select(.kind == "weekly_scoped")' ~/.cache/claude-usage/usage.json
+```
+
+- **No such file:** your status line script doesn't have the Fable block from `statusline-snippet.sh`, or `curl` or `jq` is missing. The block tries at most once every 5 minutes. To retry now, run `rm ~/.cache/claude-usage/usage.attempt` and send a message in Claude Code.
+- **Nothing printed:** your plan has no separate Fable weekly limit, so there's nothing to show.
+- **The file stopped updating:** Claude Code's saved token may have expired. It refreshes the token on its own the next time it calls the API, so the next fetch usually works.
 
 ## The label is dimmed
 

@@ -30,6 +30,8 @@ if [[ "${1:-}" != "--no-data" ]]; then
     now=$(date +%s)
     printf '{"rate_limits":{"five_hour":{"used_percentage":33,"resets_at":%d},"seven_day":{"used_percentage":63,"resets_at":%d}}}' \
         $((now + 7200)) $((now + 300000)) > "$XDG_CACHE_HOME/claude-usage/statusline.json"
+    printf '{"limits":[{"kind":"weekly_scoped","group":"weekly","percent":15,"resets_at":"%s","scope":{"model":{"display_name":"Fable"}}}]}' \
+        "$(date -u -d @$((now + 300000)) +%Y-%m-%dT%H:%M:%S+00:00)" > "$XDG_CACHE_HOME/claude-usage/usage.json"
 fi
 
 dbus-run-session -- bash -c "

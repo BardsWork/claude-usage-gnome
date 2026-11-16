@@ -4,6 +4,9 @@ import GLib from 'gi://GLib';
 /** Where the Claude Code status line hook writes its JSON (see statusline-snippet.sh). */
 export const DEFAULT_FILE = GLib.build_filenamev([GLib.get_home_dir(), '.cache', 'claude-usage', 'statusline.json']);
 
+/** Where the status line hook saves claude.ai's usage report, which has the Fable window. */
+export const USAGE_REPORT_FILE = GLib.build_filenamev([GLib.get_home_dir(), '.cache', 'claude-usage', 'usage.json']);
+
 /** Reads the saved status line JSON. Returns null if the file is missing or half written. */
 export function readUsage(path) {
     try {
@@ -12,6 +15,28 @@ export function readUsage(path) {
         const [, bytes] = file.load_contents(null);
         const data = JSON.parse(new TextDecoder().decode(bytes));
         return {limits: data.rate_limits ?? {}, updated: info.get_modification_date_time().to_unix()};
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * The Fable weekly window from a saved usage report, in the same shape as the status line's
+ * windows ({used_percentage, resets_at} in Unix seconds). Null if there isn't one.
+ */
+export function fableWindow(report) {
+    const row = (report?.limits ?? []).find(l =>
+        l?.kind === 'weekly_scoped' && /^fable\b/i.test(String(l.scope?.model?.display_name ?? '')));
+    if (typeof row?.percent !== 'number') return null;
+    const resets = row.resets_at ? GLib.DateTime.new_from_iso8601(row.resets_at, null) : null;
+    return {used_percentage: row.percent, resets_at: resets ? resets.to_unix() : null};
+}
+
+/** Reads the Fable weekly window from the saved usage report. Null if missing or unreadable. */
+export function readFable(path) {
+    try {
+        const [, bytes] = Gio.File.new_for_path(path).load_contents(null);
+        return fableWindow(JSON.parse(new TextDecoder().decode(bytes)));
     } catch {
         return null;
     }

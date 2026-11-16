@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fable weekly row in the menu, with its percentage and reset time. The status line snippet has an optional block that fetches claude.ai's usage report, which is the only place this window shows up ([#1](https://github.com/BardsWork/claude-usage-gnome/issues/1)).
+
 ## 0.1.0 (2026-10-20)
 
 First release.
