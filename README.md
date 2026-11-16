@@ -8,7 +8,7 @@ A GNOME Shell extension that shows your Claude Pro or Max plan usage in the top 
 
 ![The extension in the GNOME top bar with its menu open, showing 33% of the 5-hour window and 63% of the weekly limit used](docs/screenshot.png)
 
-The first number is your 5-hour session window. The second is your weekly limit. Click it to see when each one resets and how old the numbers are, plus your Fable weekly limit and when it resets, if you turn that on.
+The first number is your 5-hour session window. The second is your weekly limit. Click it to see when each one resets and how old the numbers are, plus your Fable weekly limit and any limit resets you have left to use, if you turn that on.
 
 - No login, no API key, no network calls in the extension. It reads files that Claude Code's status line writes.
 - About 100 lines of JavaScript, with unit tests and a headless GNOME Shell test.
@@ -41,6 +41,14 @@ The status line JSON has no Fable window. It's only in the usage report that `/u
 - The token is only sent to Anthropic's API, the same request Claude Code makes for `/usage`. It doesn't go through the process list or into any file.
 - If you don't want this, leave out that part of the snippet. The menu then has no Fable row and everything else works as before.
 - Like the rest, it only updates while Claude Code is running.
+
+### Limit resets (optional)
+
+The same fetch also asks for the limit resets that Claude Code's `/limit-reset` command uses. When you have one left, the menu shows a row such as `Limit resets: 1 full reset, use by Thu Dec 10`, and hides it when you have none.
+
+- These come from an undocumented part of the usage report (`cedar_ember`), so they may change or stop showing up. If they do, the row just stays hidden.
+- The server only lists them for requests that send Claude Code's User-Agent, so the snippet sends `claude-cli/<version>`, with the version taken from the status line JSON.
+- The extension only shows your resets. It never uses one. To use one, run `/limit-reset` in Claude Code.
 
 ## Requirements
 
