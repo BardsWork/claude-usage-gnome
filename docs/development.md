@@ -7,6 +7,8 @@
 | `claude-usage@bardswork/extension.js` | The top-bar button and menu |
 | `claude-usage@bardswork/usage.js` | Reads the JSON file and formats the text. No GNOME Shell imports, so it can be unit tested with plain `gjs` |
 | `claude-usage@bardswork/stylesheet-dark.css`, `stylesheet-light.css` | Warning and critical colors. GNOME Shell loads the one that matches the shell style |
+| `claude-usage@bardswork/prefs.js` | The settings page |
+| `claude-usage@bardswork/schemas/` | The settings schema. `install.sh` compiles it, and `gnome-extensions pack` does for zips |
 | `claude-usage@bardswork/metadata.json` | Extension name, ID and supported GNOME versions |
 | `statusline-snippet.sh` | Lines to add to your Claude Code status line script |
 | `install.sh` | Links the extension into GNOME and enables it |

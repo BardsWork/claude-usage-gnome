@@ -12,6 +12,12 @@ The first number is your 5-hour session window. The second is your weekly limit.
 
 If you turn on the [usage report fetch](#fable-weekly-limit-optional), the menu also has your Fable weekly limit, any limit resets you have left to use, and where your weekly usage went (Claude Code, chats, Cowork). The label then also turns yellow when the server marks a limit as anything other than normal, and the limit that applies right now is shown in bold.
 
+### Notifications and settings
+
+The extension sends a notification when a window reaches the warning or critical percentage, when a window that reached a warning resets, and when an unused limit reset runs out within a day. It only notifies about fresh numbers, and never about limits you'd already reached before logging in.
+
+Click **Settings** at the bottom of the menu, or run `gnome-extensions prefs claude-usage@bardswork`, to change the warning and critical percentages (80% and 95% by default), turn each kind of notification on or off, or hide the current session rows.
+
 ### Current session
 
 Below the limits, the menu shows the Claude Code session that refreshed the status line last: project, model, how full its context is, and what it has cost at API prices, for example `my-repo · Opus 5.5 · context 16% of 1M · $4.70 at API prices`. On a Pro or Max plan you don't pay that cost. It's what the same work would cost through the API. Below that, `Prompt cache: warm for 42m · 99% hits` says how long the session's prompt cache stays warm, or `cold since <time>` once it has expired.
@@ -106,7 +112,7 @@ The same fetch also asks for the limit resets that Claude Code's `/limit-reset` 
    ./install.sh
    ```
 
-   This symlinks `claude-usage@bardswork` into `~/.local/share/gnome-shell/extensions/`, so edits in this folder are what GNOME runs, and adds it to GNOME's enabled extensions.
+   This compiles the settings schema, symlinks `claude-usage@bardswork` into `~/.local/share/gnome-shell/extensions/`, so edits in this folder are what GNOME runs, and adds it to GNOME's enabled extensions. After pulling changes that touch `schemas/`, run it again.
 
 4. Log out and back in. On Wayland, GNOME only finds new extensions at login.
 

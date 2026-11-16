@@ -6,6 +6,9 @@ uuid="claude-usage@bardswork"
 src="$(cd "$(dirname "$0")" && pwd)/$uuid"
 dest="$HOME/.local/share/gnome-shell/extensions/$uuid"
 
+# The settings schema has to be compiled next to it. gnome-extensions pack does this for zips
+glib-compile-schemas "$src/schemas"
+
 mkdir -p "$(dirname "$dest")"
 rm -rf "$dest"
 ln -s "$src" "$dest"

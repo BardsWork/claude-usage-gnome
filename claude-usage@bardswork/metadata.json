@@ -3,5 +3,6 @@
   "name": "Claude Usage",
   "description": "Shows Claude plan usage (5-hour, weekly, Fable weekly and limit resets) in the top bar, from the Claude Code status line.",
   "shell-version": ["50"],
+  "settings-schema": "org.gnome.shell.extensions.claude-usage",
   "url": "https://github.com/BardsWork/claude-usage-gnome"
 }

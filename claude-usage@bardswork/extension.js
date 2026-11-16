@@ -3,13 +3,14 @@ import St from 'gi://St';
 import Clutter from 'gi://Clutter';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {
     DEFAULT_FILE, USAGE_REPORT_FILE, WINDOW_SECONDS, ageText, breakdown, cacheText, fableWindow, limitLevel, limitStates,
-    paceText, readReportFile, readUsage, resetGrants, resetState, resetText, resetUsableAtLimit, resetsText, sessionText,
+    paceText, pendingAlerts, readReportFile, readUsage, resetGrants, resetState, resetText, resetUsableAtLimit, resetsText, sessionText,
     shareText, windowText, worstLevel,
 } from './usage.js';
 
@@ -38,6 +39,11 @@ function rowText(name, win, length, now, detail = '') {
 
 export default class ClaudeUsageExtension extends Extension {
     enable() {
+        this._settings = this.getSettings();
+        this._settingsChanged = this._settings.connect('changed', () => this._refresh());
+        // What has been notified already. Null until the first refresh, which only records the
+        // state so logging in doesn't notify about limits reached earlier.
+        this._sent = null;
         this._button = new PanelMenu.Button(0.0, this.metadata.name, false);
         this._label = new St.Label({text: 'Claude …', y_align: Clutter.ActorAlign.CENTER});
         this._button.add_child(this._label);
@@ -72,6 +78,10 @@ export default class ClaudeUsageExtension extends Extension {
 
         Main.panel.addToStatusArea(this.uuid, this._button);
 
+        // A button to the preferences at the bottom of the menu
+        this._button.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._button.menu.addAction('Settings', () => this.openPreferences());
+
         this._refresh();
         this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, REFRESH_SECONDS, () => {
             this._refresh();
@@ -82,6 +92,12 @@ export default class ClaudeUsageExtension extends Extension {
     disable() {
         if (this._timer) GLib.source_remove(this._timer);
         this._timer = null;
+        if (this._settingsChanged) this._settings.disconnect(this._settingsChanged);
+        this._settingsChanged = null;
+        this._settings = null;
+        this._sent = null;
+        this._source?.destroy();
+        this._source = null;
         this._button?.destroy();
         this._button = null;
     }
@@ -111,8 +127,13 @@ export default class ClaudeUsageExtension extends Extension {
         const reportOpacity = reportAge !== null && reportAge > REPORT_STALE_SECONDS ? DIMMED : 255;
         const states = limitStates(report);
         const fable = fableWindow(report);
-        const fiveLevel = limitLevel(five, states.five_hour?.severity, now);
-        const weekLevel = limitLevel(week, states.seven_day?.severity, now);
+        const thresholds = {
+            warning: this._settings.get_int('warning-percent'),
+            critical: this._settings.get_int('critical-percent'),
+        };
+        const fiveLevel = limitLevel(five, states.five_hour?.severity, now, thresholds);
+        const weekLevel = limitLevel(week, states.seven_day?.severity, now, thresholds);
+        const fableLevel = limitLevel(fable, states.fable?.severity, now, thresholds);
 
         this._label.text = `Claude ${windowText(five, now)} · ${windowText(week, now)}`;
         this._label.opacity = age > STALE_SECONDS ? DIMMED : 255;
@@ -134,7 +155,7 @@ export default class ClaudeUsageExtension extends Extension {
         this._fableItem.opacity = reportOpacity;
         if (fable) {
             this._fableItem.label.text = rowText('Fable weekly', fable, WINDOW_SECONDS.seven_day, now, shareText(fable));
-            setLevel(this._fableItem.label, limitLevel(fable, states.fable?.severity, now), states.fable?.active);
+            setLevel(this._fableItem.label, fableLevel, states.fable?.active);
         }
         const resets = resetGrants(report, now);
         const state = resetState(report);
@@ -146,8 +167,9 @@ export default class ClaudeUsageExtension extends Extension {
             setLevel(this._resetsItem.label, resetUsableAtLimit(resets, state) ? 'warning' : 'normal');
         }
 
-        const session = sessionText(usage.data);
-        const cache = cacheText(usage.data, now);
+        const showSession = this._settings.get_boolean('show-session');
+        const session = showSession ? sessionText(usage.data) : '';
+        const cache = showSession ? cacheText(usage.data, now) : '';
         this._sessionItem.visible = session !== '';
         this._sessionItem.label.text = session;
         this._cacheItem.visible = cache !== '';
@@ -158,5 +180,42 @@ export default class ClaudeUsageExtension extends Extension {
 
         const reportText = reportAge === null ? '' : ` · usage report ${ageText(reportAge)} ago`;
         this._ageItem.label.text = `Updated ${ageText(age)} ago (from Claude Code)${reportText}`;
+
+        // Old numbers would notify about a state that may have changed since
+        if (age <= STALE_SECONDS) {
+            this._notify([
+                {key: 'five_hour', name: '5-hour', win: five, level: fiveLevel},
+                {key: 'seven_day', name: 'Weekly', win: week, level: weekLevel},
+                ...fable ? [{key: 'fable', name: 'Fable weekly', win: fable, level: fableLevel}] : [],
+            ], resets, now);
+        }
+    }
+
+    _notify(windows, grants, now) {
+        const options = {
+            limits: this._settings.get_boolean('notify-limits'),
+            resets: this._settings.get_boolean('notify-resets'),
+            expiring: this._settings.get_boolean('notify-expiring'),
+        };
+        const first = this._sent === null;
+        const {alerts, sent} = pendingAlerts(windows, grants, this._sent ?? {}, now, options);
+        this._sent = sent;
+        if (first) return;
+        for (const {title, body} of alerts) {
+            const source = this._notificationSource();
+            source.addNotification(new MessageTray.Notification({source, title, body}));
+        }
+    }
+
+    /** The message tray source the notifications show under, made when first needed. */
+    _notificationSource() {
+        if (!this._source) {
+            this._source = new MessageTray.Source({title: this.metadata.name, iconName: 'dialog-information-symbolic'});
+            this._source.connect('destroy', () => {
+                this._source = null;
+            });
+            Main.messageTray.add(this._source);
+        }
+        return this._source;
     }
 }

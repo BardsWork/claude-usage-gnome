@@ -195,8 +195,8 @@ export const WINDOW_SECONDS = {five_hour: 5 * 3600, seven_day: 7 * 86400};
 
 const LEVELS = ['normal', 'warning', 'critical'];
 // Used percentages at which a window counts as a warning or critical without a server severity
-const WARNING_PERCENT = 80;
-const CRITICAL_PERCENT = 95;
+// (defaults for the warning-percent and critical-percent settings)
+export const DEFAULT_THRESHOLDS = {warning: 80, critical: 95};
 
 /**
  * The server's severity and whether it's the limit that applies now, for the session, weekly
@@ -218,12 +218,13 @@ export function limitStates(report) {
 
 /**
  * How close a window is to its limit: 'normal', 'warning' or 'critical'. The worse of the
- * server's severity (anything but 'normal' counts as a warning) and the used percentage.
+ * server's severity (anything but 'normal' counts as a warning) and the used percentage against
+ * thresholds ({warning, critical} percentages).
  */
-export function limitLevel(win, severity, now) {
+export function limitLevel(win, severity, now, thresholds = DEFAULT_THRESHOLDS) {
     if (!win || (win.resets_at && win.resets_at < now)) return 'normal';
     const pct = win.used_percentage;
-    let level = pct >= CRITICAL_PERCENT ? 2 : pct >= WARNING_PERCENT ? 1 : 0;
+    let level = pct >= thresholds.critical ? 2 : pct >= thresholds.warning ? 1 : 0;
     if (typeof severity === 'string' && severity !== 'normal') level = Math.max(level, 1);
     return LEVELS[level];
 }
@@ -310,4 +311,61 @@ export function cacheText(data, now) {
         return `cold since ${since}${hits}`;
     }
     return `warm for ${minutesText(Math.ceil((cache.expires_at - now) / 60))}${hits}`;
+}
+
+// Warn about a limit reset that will run out unused this long before it does
+const EXPIRING_SECONDS = 24 * 3600;
+
+/**
+ * Which notifications to send, given the menu's windows and what has been sent already.
+ *
+ * windows: [{key, name, win, level}] with level from limitLevel(). grants: from resetGrants().
+ * sent: the state this returned last time ({} at first). options: {limits, resets, expiring},
+ * each true to send that kind.
+ *
+ * Returns {alerts: [{title, body}], sent}. Sends one alert per window each time it reaches a
+ * worse level, one when a window that had reached a warning resets, and one per limit reset
+ * that runs out within a day. Pass the returned sent back next time so nothing repeats.
+ */
+export function pendingAlerts(windows, grants, sent, now, options) {
+    const alerts = [];
+    // Keep windows missing this time (say the usage report couldn't be read), so they don't alert again
+    const next = Object.fromEntries(Object.entries(sent).filter(([k]) => !k.startsWith('grant:')));
+    for (const {key, name, win, level} of windows) {
+        if (!win?.resets_at) continue;
+        const prev = sent[key];
+        let rec = prev?.resets_at === win.resets_at ? {...prev} : {resets_at: win.resets_at, level: 0, reset: false};
+        // A new window has started since the last one that reached a warning
+        if (prev && prev.resets_at !== win.resets_at && prev.level > 0 && !prev.reset && prev.resets_at <= now) {
+            if (options.resets) alerts.push({title: `${name} limit has reset`, body: `It was at ${prev.percent}%.`});
+        }
+        if (win.resets_at <= now) {
+            if (rec.level > 0 && !rec.reset && options.resets)
+                alerts.push({title: `${name} limit has reset`, body: `It was at ${rec.percent}%.`});
+            rec.reset = true;
+        } else {
+            const index = LEVELS.indexOf(level);
+            if (index > rec.level && options.limits) {
+                alerts.push({
+                    title: `${name} limit at ${Math.round(win.used_percentage)}%`,
+                    body: `Resets ${resetText(win, now)}.`,
+                });
+            }
+            if (index > rec.level) rec.level = index;
+            rec.percent = Math.round(win.used_percentage);
+        }
+        next[key] = rec;
+    }
+    for (const g of grants) {
+        if (g.ends_at === null || g.ends_at - now > EXPIRING_SECONDS) continue;
+        const key = `grant:${g.kind}:${g.ends_at}`;
+        if (!sent[key] && options.expiring) {
+            alerts.push({
+                title: `${g.left} ${g.kind} reset${g.left === 1 ? '' : 's'} expiring`,
+                body: `Use by ${GLib.DateTime.new_from_unix_local(g.ends_at).format('%a %H:%M')} with /limit-reset in Claude Code, or it's lost.`,
+            });
+        }
+        next[key] = true;
+    }
+    return {alerts, sent: next};
 }

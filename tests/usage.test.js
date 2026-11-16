@@ -3,8 +3,8 @@ import GLib from 'gi://GLib';
 import System from 'system';
 
 import {
-    WINDOW_SECONDS, ageText, breakdown, cacheText, fableWindow, limitLevel, limitStates, paceText, readFable, readReport,
-    readReportFile, readResets, readUsage, resetGrants, resetState, resetText, resetUsableAtLimit, resetsText,
+    DEFAULT_THRESHOLDS, WINDOW_SECONDS, ageText, breakdown, cacheText, fableWindow, limitLevel, limitStates, paceText, readFable, readReport,
+    pendingAlerts, readReportFile, readResets, readUsage, resetGrants, resetState, resetText, resetUsableAtLimit, resetsText,
     sessionText, shareText, tokensText, windowText, worstLevel,
 } from '../claude-usage@bardswork/usage.js';
 
@@ -317,6 +317,81 @@ test('cacheText: nothing without a cache', () => {
     equal(cacheText({}, NOW), '');
     equal(cacheText({prompt_cache: {caching_observed: false, expires_at: NOW + 60}}, NOW), '');
     equal(cacheText({prompt_cache: {warm: true, expires_at: '2026-10-20T13:00:00Z'}}, NOW), '');
+});
+
+test('limitLevel: custom thresholds', () => {
+    equal(DEFAULT_THRESHOLDS, {warning: 80, critical: 95});
+    equal(limitLevel(at(70), null, NOW, {warning: 60, critical: 90}), 'warning');
+    equal(limitLevel(at(90), null, NOW, {warning: 60, critical: 90}), 'critical');
+});
+
+const ALL = {limits: true, resets: true, expiring: true};
+const five = (pct, resets_at = NOW + 3600, now = NOW) => {
+    const win = {used_percentage: pct, resets_at};
+    return [{key: 'five_hour', name: '5-hour', win, level: limitLevel(win, null, now)}];
+};
+const titles = r => r.alerts.map(a => a.title);
+test('pendingAlerts: one alert per level reached', () => {
+    let r = pendingAlerts(five(50), [], {}, NOW, ALL);
+    equal(titles(r), []);
+    r = pendingAlerts(five(82), [], r.sent, NOW, ALL);
+    equal(titles(r), ['5-hour limit at 82%']);
+    equal(r.alerts[0].body, 'Resets Tue 13:00 (in 1h 0m).');
+    r = pendingAlerts(five(88), [], r.sent, NOW, ALL);
+    equal(titles(r), []);
+    r = pendingAlerts(five(96), [], r.sent, NOW, ALL);
+    equal(titles(r), ['5-hour limit at 96%']);
+    r = pendingAlerts(five(97), [], r.sent, NOW, ALL);
+    equal(titles(r), []);
+});
+test('pendingAlerts: jumping straight to critical sends one alert', () =>
+    equal(titles(pendingAlerts(five(99), [], {}, NOW, ALL)), ['5-hour limit at 99%']));
+test('pendingAlerts: reset after a warning, once', () => {
+    let r = pendingAlerts(five(90), [], {}, NOW, ALL);
+    // The saved reset time passes before Claude Code reports the new window
+    const later = NOW + 3660;
+    r = pendingAlerts(five(90, NOW + 3600, later), [], r.sent, later, ALL);
+    equal(titles(r), ['5-hour limit has reset']);
+    equal(r.alerts[0].body, 'It was at 90%.');
+    r = pendingAlerts(five(90, NOW + 3600, later), [], r.sent, later, ALL);
+    equal(titles(r), []);
+    r = pendingAlerts(five(5, later + 18000, later), [], r.sent, later, ALL);
+    equal(titles(r), []);
+});
+test('pendingAlerts: reset seen only as a new window', () => {
+    let r = pendingAlerts(five(90, NOW - 60, NOW - 120), [], {}, NOW - 120, ALL);
+    r = pendingAlerts(five(3, NOW + 18000), [], r.sent, NOW, ALL);
+    equal(titles(r), ['5-hour limit has reset']);
+});
+test('pendingAlerts: no reset alert without a warning first', () => {
+    let r = pendingAlerts(five(40), [], {}, NOW, ALL);
+    r = pendingAlerts(five(40, NOW + 3600, NOW + 3660), [], r.sent, NOW + 3660, ALL);
+    equal(titles(r), []);
+});
+test('pendingAlerts: a window missing for a refresh does not alert again', () => {
+    let r = pendingAlerts(five(85), [], {}, NOW, ALL);
+    r = pendingAlerts([], [], r.sent, NOW, ALL);
+    r = pendingAlerts(five(85), [], r.sent, NOW, ALL);
+    equal(titles(r), []);
+});
+test('pendingAlerts: options turn kinds off but still track them', () => {
+    const off = {limits: false, resets: false, expiring: false};
+    let r = pendingAlerts(five(90), [], {}, NOW, off);
+    equal(titles(r), []);
+    r = pendingAlerts(five(90), [], r.sent, NOW, ALL);
+    equal(titles(r), []);
+});
+test('pendingAlerts: limit reset expiring within a day, once', () => {
+    const grants = [
+        {kind: 'full', left: 1, ends_at: NOW + 3 * 3600, usable: true, blocker: null},
+        {kind: 'weekly', left: 1, ends_at: NOW + 3 * 86400, usable: true, blocker: null},
+        {kind: '5-hour', left: 2, ends_at: null, usable: true, blocker: null},
+    ];
+    let r = pendingAlerts([], grants, {}, NOW, ALL);
+    equal(titles(r), ['1 full reset expiring']);
+    equal(r.alerts[0].body, "Use by Tue 15:00 with /limit-reset in Claude Code, or it's lost.");
+    r = pendingAlerts([], grants, r.sent, NOW, ALL);
+    equal(titles(r), []);
 });
 
 if (GLib.file_test(path, GLib.FileTest.EXISTS)) GLib.unlink(path);
