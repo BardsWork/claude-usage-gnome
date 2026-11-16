@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Extra usage row: what you've spent this month, against your monthly cap, and any prepaid credits. Hidden when extra usage is off and nothing was spent. The snippet's fetch no longer sends `skip_spend=1`, which left spend out of the report ([#9](https://github.com/BardsWork/claude-usage-gnome/issues/9)).
+- README rewritten: what each row shows, install by sourcing the snippet so `git pull` keeps it up to date, settings and notifications, what leaves your machine, and how to update.
+- `docs/screenshot.sh` now also makes `notification.png`, `settings.png` and `social-preview.png`, and every image was regenerated with all rows showing.
+- Settings page opens tall enough to show every setting, without the first number selected.
 - Notifications when a window reaches the warning or critical percentage, when a window that reached a warning resets, and when an unused limit reset runs out within a day ([#13](https://github.com/BardsWork/claude-usage-gnome/issues/13)).
 - Settings page (menu → Settings): warning and critical percentages, each kind of notification, and the current session rows. `install.sh` now compiles the settings schema, so run it again after updating.
 - Current session rows: project, model, context used and cost at API prices for the session that refreshed the status line last ([#10](https://github.com/BardsWork/claude-usage-gnome/issues/10)), and how long its prompt cache stays warm, with the hit ratio ([#11](https://github.com/BardsWork/claude-usage-gnome/issues/11)).

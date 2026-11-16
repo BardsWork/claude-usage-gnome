@@ -9,7 +9,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {
-    DEFAULT_FILE, USAGE_REPORT_FILE, WINDOW_SECONDS, ageText, breakdown, cacheText, fableWindow, limitLevel, limitStates,
+    DEFAULT_FILE, USAGE_REPORT_FILE, WINDOW_SECONDS, ageText, breakdown, cacheText, extraUsage, extraUsageText, fableWindow, limitLevel, limitStates,
     paceText, pendingAlerts, readReportFile, readUsage, resetGrants, resetState, resetText, resetUsableAtLimit, resetsText, sessionText,
     shareText, windowText, worstLevel,
 } from './usage.js';
@@ -59,6 +59,9 @@ export default class ClaudeUsageExtension extends Extension {
         // Only shown when the saved usage report lists limit resets left to use
         this._resetsItem = new PopupMenu.PopupMenuItem('', {reactive: false});
         this._resetsItem.visible = false;
+        // Only shown when extra usage (paid overage) is on, or something was spent on it
+        this._extraItem = new PopupMenu.PopupMenuItem('', {reactive: false});
+        this._extraItem.visible = false;
         // The Claude Code session that refreshed the status line last, when the JSON has it
         this._sessionSeparator = new PopupMenu.PopupSeparatorMenuItem();
         this._sessionItem = new PopupMenu.PopupMenuItem('', {reactive: false});
@@ -70,6 +73,7 @@ export default class ClaudeUsageExtension extends Extension {
         this._button.menu.addMenuItem(this._breakdownItem);
         this._button.menu.addMenuItem(this._fableItem);
         this._button.menu.addMenuItem(this._resetsItem);
+        this._button.menu.addMenuItem(this._extraItem);
         this._button.menu.addMenuItem(this._sessionSeparator);
         this._button.menu.addMenuItem(this._sessionItem);
         this._button.menu.addMenuItem(this._cacheItem);
@@ -112,6 +116,7 @@ export default class ClaudeUsageExtension extends Extension {
             this._breakdownItem.visible = false;
             this._fableItem.visible = false;
             this._resetsItem.visible = false;
+            this._extraItem.visible = false;
             for (const item of [this._sessionSeparator, this._sessionItem, this._cacheItem]) item.visible = false;
             this._ageItem.label.text = 'No data yet: start Claude Code';
             return;
@@ -165,6 +170,15 @@ export default class ClaudeUsageExtension extends Extension {
             this._resetsItem.label.text = `Limit resets: ${resetsText(resets, state, now)}`;
             // At a limit with a reset you can use is when this row matters
             setLevel(this._resetsItem.label, resetUsableAtLimit(resets, state) ? 'warning' : 'normal');
+        }
+
+        const extra = extraUsage(report);
+        this._extraItem.visible = extra !== null;
+        this._extraItem.opacity = reportOpacity;
+        if (extra) {
+            this._extraItem.label.text = `Extra usage: ${extraUsageText(extra)}`;
+            const level = extra.reached ? 'critical' : extra.severity && extra.severity !== 'normal' ? 'warning' : 'normal';
+            setLevel(this._extraItem.label, level);
         }
 
         const showSession = this._settings.get_boolean('show-session');

@@ -34,13 +34,14 @@ if [[ "${1:-}" != "--no-data" ]]; then
         '"workspace":{"project_dir":"/tmp/my-repo"},"model":{"display_name":"Opus 5.5"},"context_window":{"used_percentage":16,"context_window_size":1000000},"cost":{"total_cost_usd":4.7}' \
         $((now + 2520)) > "$XDG_CACHE_HOME/claude-usage/statusline.json"
     week_resets=$(date -u -d @$((now + 300000)) +%Y-%m-%dT%H:%M:%S+00:00)
-    printf '{"limits":[%s,%s,%s],"seven_day_breakdown":{"rows":[%s,%s]},%s,%s}' \
+    printf '{"limits":[%s,%s,%s],"seven_day_breakdown":{"rows":[%s,%s]},%s,%s,%s}' \
         '{"kind":"session","group":"session","percent":33,"severity":"normal","is_active":false}' \
         '{"kind":"weekly_all","group":"weekly","percent":63,"severity":"warning","is_active":true}' \
         "{\"kind\":\"weekly_scoped\",\"group\":\"weekly\",\"percent\":15,\"resets_at\":\"$week_resets\",\"scope\":{\"model\":{\"display_name\":\"Fable\"}}}" \
         '{"key":"claude_code","display_name":"Claude Code","percent":95}' \
         '{"key":"chat","display_name":"Chats","percent":5}' \
         '"weekly_scoped_shares":[{"limit_index":2,"used_percent_of_weekly":7,"allowance_percent_of_weekly":50}]' \
+        '"spend":{"used":{"amount_minor":420,"currency":"USD","exponent":2},"limit":{"amount_minor":5000,"currency":"USD","exponent":2},"enabled":true}' \
         "\"cedar_ember\":{\"at_limit\":true,\"grants\":[{\"type\":\"full\",\"resets_left\":1,\"usable_now\":true,\"ends_at\":\"$week_resets\"}]}" \
         > "$XDG_CACHE_HOME/claude-usage/usage.json"
 fi
