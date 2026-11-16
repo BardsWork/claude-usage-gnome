@@ -66,6 +66,17 @@ jq '.cedar_ember | {eligible, ineligible_reason, grants: [.grants[]? | {label, r
 
 The usage report they come from is more than 30 minutes old. The menu's last row says how old it is. The fetch runs at most every 5 minutes while Claude Code is running, so the report is either out of date because no session has run for a while, or the fetch is failing. To retry now, run `rm ~/.cache/claude-usage/usage.attempt` and send a message in Claude Code. If it stays old, see [The menu has no Fable row](#the-menu-has-no-fable-row) for the checks.
 
+## The menu has no extra usage row
+
+The row only shows when extra usage is turned on, or you've spent something on it this month. Check:
+
+```bash
+jq '{spend, extra_usage}' ~/.cache/claude-usage/usage.json
+```
+
+- **Both `null`:** your status line script copied an older snippet, which fetched with `skip_spend=1`. That leaves spend out of the report. Source the current `statusline-snippet.sh` instead.
+- **`enabled` and `is_enabled` are `false` and nothing was spent:** extra usage is off, so there's nothing to show.
+
 ## The label is dimmed
 
 The numbers are more than 15 minutes old. No Claude Code session has refreshed its status line since then. It brightens again the next time one does.

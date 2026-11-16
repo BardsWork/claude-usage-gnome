@@ -1,5 +1,6 @@
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
@@ -7,6 +8,8 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 export default class ClaudeUsagePreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
+        // Tall enough to show every setting without scrolling
+        window.set_default_size(620, 680);
         const page = new Adw.PreferencesPage();
         window.add(page);
 
@@ -45,5 +48,11 @@ export default class ClaudeUsagePreferences extends ExtensionPreferences {
         const menu = new Adw.PreferencesGroup({title: 'Menu'});
         menu.add(switchRow('show-session', 'Current session', 'Project, model, context, cost and prompt cache'));
         page.add(menu);
+
+        // GTK focuses the first number, which arrow keys would then change by accident
+        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            window.set_focus(null);
+            return GLib.SOURCE_REMOVE;
+        });
     }
 }

@@ -369,3 +369,72 @@ export function pendingAlerts(windows, grants, sent, now, options) {
     }
     return {alerts, sent: next};
 }
+
+/** An amount of money as text: "$4.20" for USD, else "4.20 EUR". */
+export function moneyText(amount, currency) {
+    const n = amount.toFixed(2);
+    return !currency || currency === 'USD' ? `$${n}` : `${n} ${currency}`;
+}
+
+/** A money value from the usage report: {amount_minor, currency, exponent}, or minor units. */
+function money(value, currency, exponent = 2) {
+    if (typeof value === 'number') return {amount: value / 10 ** exponent, currency};
+    if (typeof value?.amount_minor === 'number') {
+        const exp = Number.isInteger(value.exponent) ? value.exponent : exponent;
+        return {amount: value.amount_minor / 10 ** exp, currency: value.currency ?? currency};
+    }
+    return null;
+}
+
+/**
+ * Extra usage (paid overage) for the billing period, from a saved usage report: {used, limit,
+ * balance, percent, severity, reached}, with used, limit and balance as {amount, currency} or
+ * null. Null when extra usage is off and nothing was spent, or the report doesn't have it.
+ * The report only has it when fetched without skip_spend=1.
+ */
+export function extraUsage(report) {
+    const spend = report?.spend;
+    const extra = report?.extra_usage;
+    if (spend && typeof spend === 'object') {
+        const used = money(spend.used);
+        if (!used) return null;
+        if (spend.enabled !== true && used.amount === 0) return null;
+        return {
+            used,
+            limit: money(spend.limit ?? spend.cap, used.currency),
+            balance: money(spend.balance, used.currency),
+            percent: typeof spend.percent === 'number' ? spend.percent : null,
+            severity: typeof spend.severity === 'string' ? spend.severity : null,
+            reached: extra?.spend_limit_reached === true,
+        };
+    }
+    if (extra && typeof extra === 'object') {
+        const exp = Number.isInteger(extra.decimal_places) ? extra.decimal_places : 2;
+        const used = money(extra.used_credits, extra.currency, exp);
+        if (!used || (extra.is_enabled !== true && used.amount === 0)) return null;
+        return {
+            used,
+            limit: money(extra.monthly_limit, extra.currency, exp),
+            balance: null,
+            percent: typeof extra.utilization === 'number' ? extra.utilization : null,
+            severity: null,
+            reached: extra.spend_limit_reached === true,
+        };
+    }
+    return null;
+}
+
+/** Extra usage as one line, for example "$4.20 of $50.00 used (8%)". */
+export function extraUsageText(extra) {
+    let text = moneyText(extra.used.amount, extra.used.currency);
+    if (extra.limit) {
+        text += ` of ${moneyText(extra.limit.amount, extra.limit.currency)} used`;
+        const pct = extra.percent ?? (extra.limit.amount > 0 ? extra.used.amount / extra.limit.amount * 100 : null);
+        if (pct !== null) text += ` (${Math.round(pct)}%)`;
+    } else {
+        text += ' used, no monthly cap';
+    }
+    if (extra.reached) text += ' · limit reached';
+    if (extra.balance) text += ` · ${moneyText(extra.balance.amount, extra.balance.currency)} in credits`;
+    return text;
+}

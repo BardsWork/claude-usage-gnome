@@ -58,7 +58,7 @@ The headless test needs GNOME Shell installed, so GitHub Actions only runs the u
 
 ## Screenshot
 
-`docs/screenshot.sh` starts a headless shell the same way, opens the menu and saves the top-right corner of the screen to `docs/screenshot.png`. Run it again after changing how the label or menu looks.
+`docs/screenshot.sh` starts a headless shell the same way, with sample data that fills every row, and regenerates the images in `docs/`: `screenshot.png` (the menu), `notification.png`, `settings.png`, and `social-preview.png`, which it builds around the menu screenshot. Run it again after changing how the label, menu, notifications or settings look. The social preview is uploaded by hand in the repo's GitHub settings.
 
 ## Supporting another GNOME version
 

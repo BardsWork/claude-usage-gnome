@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import System from 'system';
 
 import {
-    DEFAULT_THRESHOLDS, WINDOW_SECONDS, ageText, breakdown, cacheText, fableWindow, limitLevel, limitStates, paceText, readFable, readReport,
+    DEFAULT_THRESHOLDS, WINDOW_SECONDS, ageText, breakdown, cacheText, extraUsage, extraUsageText, moneyText, fableWindow, limitLevel, limitStates, paceText, readFable, readReport,
     pendingAlerts, readReportFile, readResets, readUsage, resetGrants, resetState, resetText, resetUsableAtLimit, resetsText,
     sessionText, shareText, tokensText, windowText, worstLevel,
 } from '../claude-usage@bardswork/usage.js';
@@ -392,6 +392,34 @@ test('pendingAlerts: limit reset expiring within a day, once', () => {
     equal(r.alerts[0].body, "Use by Tue 15:00 with /limit-reset in Claude Code, or it's lost.");
     r = pendingAlerts([], grants, r.sent, NOW, ALL);
     equal(titles(r), []);
+});
+
+const usd = n => ({amount_minor: n, currency: 'USD', exponent: 2});
+test('extraUsage: off and nothing spent is hidden', () => {
+    equal(extraUsage({spend: {used: usd(0), enabled: false}, extra_usage: {is_enabled: false, user_disabled: true}}), null);
+    equal(extraUsage({extra_usage: {is_enabled: false, used_credits: null}}), null);
+    equal(extraUsage({spend: null, extra_usage: null}), null);
+    equal(extraUsage(null), null);
+});
+test('extraUsage: from spend', () => {
+    const extra = extraUsage({spend: {used: usd(420), limit: usd(5000), percent: 8.4, severity: 'normal', enabled: true, balance: null}});
+    equal(extra, {used: {amount: 4.2, currency: 'USD'}, limit: {amount: 50, currency: 'USD'}, balance: null,
+        percent: 8.4, severity: 'normal', reached: false});
+    equal(extraUsageText(extra), '$4.20 of $50.00 used (8%)');
+});
+test('extraUsage: spent this period but turned off since still shows', () =>
+    equal(extraUsageText(extraUsage({spend: {used: usd(1250), enabled: false}})), '$12.50 used, no monthly cap'));
+test('extraUsage: limit reached and credits', () => equal(extraUsageText(extraUsage({
+    spend: {used: usd(5000), limit: usd(5000), enabled: true, balance: usd(1000)},
+    extra_usage: {spend_limit_reached: true},
+})), '$50.00 of $50.00 used (100%) · limit reached · $10.00 in credits'));
+test('extraUsage: falls back to extra_usage in minor units', () => equal(extraUsageText(extraUsage({
+    extra_usage: {is_enabled: true, monthly_limit: 2000, used_credits: 500, utilization: null, currency: 'EUR'},
+})), '5.00 EUR of 20.00 EUR used (25%)'));
+test('moneyText: dollars and other currencies', () => {
+    equal(moneyText(4.2, 'USD'), '$4.20');
+    equal(moneyText(4.2, null), '$4.20');
+    equal(moneyText(4.2, 'GBP'), '4.20 GBP');
 });
 
 if (GLib.file_test(path, GLib.FileTest.EXISTS)) GLib.unlink(path);

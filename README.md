@@ -4,94 +4,68 @@
 [![GNOME Shell 50](https://img.shields.io/badge/GNOME%20Shell-50-4a86cf?logo=gnome&logoColor=white)](https://www.gnome.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A GNOME Shell extension that shows your Claude Pro or Max plan usage in the top bar, so you can see how close you are to your rate limits without running `/usage` in Claude Code.
+A GNOME Shell extension that shows your Claude Pro or Max plan usage in the top bar, so you can see how close you are to your limits without running `/usage` in Claude Code.
 
-![The extension in the GNOME top bar with its menu open, showing 33% of the 5-hour window and 63% of the weekly limit used](docs/screenshot.png)
+![The extension's menu: the 5-hour window at 33% and below pace, the weekly limit at 82% in yellow and bold as the limit that applies now, weekly usage by surface, Fable's share of the weekly limit, one limit reset left, the current session and its prompt cache, and when the numbers were updated](docs/screenshot.png)
 
-The first number is your 5-hour session window. The second is your weekly limit. The label turns yellow at 80% and red at 95%. Click it to see when each one resets, whether you're using it faster than it refills, and how old the numbers are.
+- **No API key, no login.** The extension only reads files that Claude Code's status line writes.
+- **Warns you early.** The label turns yellow and red as you near a limit, each row says whether you're using it faster than it refills, and notifications tell you when you cross a threshold or a limit resets.
+- **Everything `/usage` shows**, and a bit more, if you turn on the optional [usage report fetch](#the-optional-usage-report-fetch).
 
-If you turn on the [usage report fetch](#fable-weekly-limit-optional), the menu also has your Fable weekly limit, any limit resets you have left to use, and where your weekly usage went (Claude Code, chats, Cowork). The label then also turns yellow when the server marks a limit as anything other than normal, and the limit that applies right now is shown in bold.
+## What it shows
 
-### Notifications and settings
+The label shows your **5-hour** window, then your **weekly** limit. It turns yellow at 80% and red at 95%. You can change both [in the settings](#settings-and-notifications).
 
-The extension sends a notification when a window reaches the warning or critical percentage, when a window that reached a warning resets, and when an unused limit reset runs out within a day. It only notifies about fresh numbers, and never about limits you'd already reached before logging in.
+Click it for the menu:
 
-Click **Settings** at the bottom of the menu, or run `gnome-extensions prefs claude-usage@bardswork`, to change the warning and critical percentages (80% and 95% by default), turn each kind of notification on or off, or hide the current session rows.
+| Row | What it tells you | Needs the usage report fetch |
+|---|---|:-:|
+| **5-hour**, **Weekly** | Percent used, when it resets, and your [pace](#pace). The limit that applies right now is bold. | |
+| **Weekly by surface** | Where this week's usage went: Claude Code, chats, Cowork | ✓ |
+| **Fable weekly** | Fable's own weekly limit, and how much of your weekly limit it may use (`7% of weekly, cap 50%`) | ✓ |
+| **Limit resets** | Resets you can use with `/limit-reset`, and when they run out. Says when you're at a limit and can use one. | ✓ |
+| **Extra usage** | What you've spent on extra usage this month, when it's turned on | ✓ |
+| **Current session** | Project, model, context used and cost at API prices, for the session that refreshed last | |
+| **Prompt cache** | How long that session's prompt cache stays warm, and its hit rate | |
+| **Updated** | How old the numbers are | |
 
-### Current session
-
-Below the limits, the menu shows the Claude Code session that refreshed the status line last: project, model, how full its context is, and what it has cost at API prices, for example `my-repo · Opus 5.5 · context 16% of 1M · $4.70 at API prices`. On a Pro or Max plan you don't pay that cost. It's what the same work would cost through the API. Below that, `Prompt cache: warm for 42m · 99% hits` says how long the session's prompt cache stays warm, or `cold since <time>` once it has expired.
-
-With several sessions open, this is whichever one refreshed last. Both rows dim when the status line is more than 15 minutes old, since the session has probably ended.
+Rows without data are hidden. The label dims when its numbers are more than 15 minutes old, and the rows from the usage report dim when it's more than 30 minutes old.
 
 ### Pace
 
-Each row says whether you're below, on, or above pace: your % used against the % of the window that has passed. Above pace, it also says when you'd hit the limit at that rate, for example `above pace, limit around Wed 18:20`. It shows nothing in the first 10% of a window, where the rate is too noisy to mean much.
+Pace compares how much of a window you've used with how much of it has passed. 40% used halfway through the week is `below pace`. Above pace, the row also says when you'd hit the limit at that rate, for example `above pace, limit around Wed 18:20`. It shows nothing in the first 10% of a window, while the rate is still noise.
 
-- No login, no API key, no network calls in the extension. It reads files that Claude Code's status line writes.
-- About 100 lines of JavaScript, with unit tests and a headless GNOME Shell test.
+### Current session
 
-## How it works
-
-Claude Code passes a JSON object to your [status line](https://docs.claude.com/en/docs/claude-code/statusline) script every time the status line refreshes. That JSON includes a `rate_limits` field with the same percentages `/usage` shows:
-
-```json
-"rate_limits": {
-  "five_hour": { "used_percentage": 33, "resets_at": 1792534800 },
-  "seven_day": { "used_percentage": 63, "resets_at": 1792875600 }
-}
-```
-
-Your status line script saves that JSON to `~/.cache/claude-usage/statusline.json`, and the extension reads the file every 30 seconds. It never touches your Claude login or calls any API.
-
-Because of this:
-
-- The numbers only update while a Claude Code session is running. If the file is more than 15 minutes old, the label dims.
-- Usage from claude.ai or the desktop app shows up the next time Claude Code refreshes its status line.
-- After a window's reset time passes, it shows 0% until Claude Code reports again.
-- `rate_limits` only appears when Claude Code is signed in with a Claude subscription (Pro or Max), not with an API key.
-
-### Fable weekly limit (optional)
-
-The status line JSON has no Fable window. It's only in the usage report that `/usage` reads from `https://api.anthropic.com/api/oauth/usage`. The second part of `statusline-snippet.sh` fetches that report, at most once every 5 minutes, using the OAuth token Claude Code saves in `~/.claude/.credentials.json`, and saves it to `~/.cache/claude-usage/usage.json`. The extension adds a "Fable weekly" row with its reset time to the menu when the file has one. When the report also has Fable's share of the weekly limit, the row shows it, for example `Fable weekly: 15% used (7% of weekly, cap 50%)`: Fable has used 7% of your weekly limit and may use up to 50% of it.
-
-- It needs `curl` and `jq`, and runs in the background so the status line never waits for it.
-- The token is only sent to Anthropic's API, the same request Claude Code makes for `/usage`. It doesn't go through the process list or into any file.
-- If you don't want this, leave out that part of the snippet. The menu then has no Fable row and everything else works as before.
-- Like the rest, it only updates while Claude Code is running. The menu's last row says how old the report is, and the rows from it dim when it's more than 30 minutes old.
-
-### Limit resets (optional)
-
-The same fetch also asks for the limit resets that Claude Code's `/limit-reset` command uses. When you have one left, the menu shows a row such as `Limit resets: 1 full reset, use by Thu Dec 10`, and hides it when you have none.
-
-- These come from an undocumented part of the usage report (`cedar_ember`), so they may change or stop showing up. If they do, the row just stays hidden.
-- The server only lists them for requests that send Claude Code's User-Agent, so the snippet sends `claude-cli/<version>`, with the version taken from the status line JSON.
-- When you're at a limit and have a reset you can use, the row turns yellow and starts with `at a limit, run /limit-reset`. During a cooldown it starts with `next usable after <time>`. A reset you can't use yet says why, for example `(blocked by the weekly limit)`.
-- The extension only shows your resets. It never uses one. To use one, run `/limit-reset` in Claude Code.
-
-## Requirements
-
-- GNOME Shell 50 (tested on Ubuntu 26.04). Other versions from 45 on may work: add them to `shell-version` in `metadata.json` and test.
-- Claude Code signed in with a Pro or Max subscription, with a status line script. Tested with version 2.1.302.
+`my-app · Opus 5.5 · context 16% of 1M · $4.70 at API prices` is the Claude Code session that refreshed the status line last. On a Pro or Max plan you don't pay that cost: it's what the same work would cost through the API. With several sessions open, it's whichever refreshed last. You can hide these rows in the settings.
 
 ## Install
+
+You need GNOME Shell 50 and Claude Code signed in with a Pro or Max subscription. The usage report fetch also needs `curl` and `jq`.
 
 1. Clone the repo:
 
    ```bash
-   git clone https://github.com/BardsWork/claude-usage-gnome.git
-   cd claude-usage-gnome
+   git clone https://github.com/BardsWork/claude-usage-gnome.git ~/claude-usage-gnome
    ```
 
-2. Add the lines from `statusline-snippet.sh` to your status line script, right after it reads stdin into `$data`. The first two save the status line JSON. The block after them is the optional [Fable fetch](#fable-weekly-limit-optional).
+2. Make your Claude Code status line script run the snippet. Add this line right after the script reads stdin into `$data`:
 
-   If you don't have a status line script yet, this one works. Save it as `~/.claude/statusline.sh` and make it executable with `chmod +x`:
+   ```bash
+   source ~/claude-usage-gnome/statusline-snippet.sh
+   ```
+
+   Sourcing it, rather than copying it in, means `git pull` updates it too. The snippet saves the status line JSON and runs the optional [usage report fetch](#the-optional-usage-report-fetch). To leave the fetch out, copy only the snippet's first two commands instead.
+
+   <details>
+   <summary>No status line script yet?</summary>
+
+   Save this as `~/.claude/statusline.sh` and make it executable with `chmod +x ~/.claude/statusline.sh`:
 
    ```bash
    #!/bin/bash
    data=$(cat)
-   mkdir -p "$HOME/.cache/claude-usage"
-   printf '%s' "$data" > "$HOME/.cache/claude-usage/statusline.json"
+   source ~/claude-usage-gnome/statusline-snippet.sh
    # What Claude Code shows in its own status line (needs jq)
    echo "$data" | jq -r '.model.display_name'
    ```
@@ -106,48 +80,86 @@ The same fetch also asks for the limit resets that Claude Code's `/limit-reset` 
 
    See the [status line docs](https://docs.claude.com/en/docs/claude-code/statusline) for more.
 
-3. Link and enable the extension:
+   </details>
+
+3. Install the extension:
 
    ```bash
-   ./install.sh
+   cd ~/claude-usage-gnome && ./install.sh
    ```
 
-   This compiles the settings schema, symlinks `claude-usage@bardswork` into `~/.local/share/gnome-shell/extensions/`, so edits in this folder are what GNOME runs, and adds it to GNOME's enabled extensions. After pulling changes that touch `schemas/`, run it again.
+   This compiles the settings schema, symlinks `claude-usage@bardswork` into `~/.local/share/gnome-shell/extensions/`, and enables it.
 
 4. Log out and back in. On Wayland, GNOME only finds new extensions at login.
 
-To check it loaded:
+Check that it loaded with `gnome-extensions info claude-usage@bardswork`, which should say `State: ACTIVE`. Numbers appear the next time Claude Code refreshes its status line. If it says `ERROR`, or the label stays at `Claude –`, see [Troubleshooting](docs/troubleshooting.md).
 
-```bash
-gnome-extensions info claude-usage@bardswork    # State: ACTIVE
+## Settings and notifications
+
+Click **Settings** at the bottom of the menu, or run `gnome-extensions prefs claude-usage@bardswork`.
+
+<img src="docs/settings.png" alt="The settings page: warning and critical percentages, switches for each kind of notification, and a switch for the current session rows" width="420">
+
+The extension sends a notification:
+
+- when a window reaches the warning or critical percentage, once per level
+- when a window that reached a warning resets
+- when an unused limit reset runs out within a day
+
+<img src="docs/notification.png" alt="A notification from Claude Usage: 5-hour limit at 96%, resets Mon 19:13 (in 2h 13m)" width="420">
+
+It only notifies about fresh numbers, and never about limits you had already reached before logging in.
+
+## How it works
+
+```
+Claude Code ──status line JSON──▶ your status line script ──▶ ~/.cache/claude-usage/statusline.json ──┐
+                                        │                                                          ├──▶ extension (reads every 30 s)
+                                        └── optional fetch, every 5 min ──▶ ~/.cache/claude-usage/usage.json ──┘
 ```
 
-If it shows `ERROR`, or the label says `Claude –`, see [Troubleshooting](docs/troubleshooting.md).
+Claude Code passes a JSON object to your [status line](https://docs.claude.com/en/docs/claude-code/statusline) script every time the status line refreshes. It includes `rate_limits`, the same 5-hour and weekly percentages `/usage` shows, plus the model, context and cost of the session. The snippet saves it, and the extension reads the file every 30 seconds.
+
+So the numbers only update while Claude Code is running. Usage from claude.ai or the desktop app shows up the next time Claude Code refreshes. After a window's reset time passes, it shows 0% until Claude Code reports again.
+
+### The optional usage report fetch
+
+Some things aren't in the status line JSON: the Fable window, where your usage went, limit resets, extra usage, and the server's own view of how close you are to each limit. They're in the usage report that `/usage` reads from `https://api.anthropic.com/api/oauth/usage`. The second part of the snippet fetches it in the background, at most every 5 minutes, and saves it to `~/.cache/claude-usage/usage.json`.
+
+- It uses the sign-in Claude Code saves in `~/.claude/.credentials.json`, and sends it only to Anthropic's API, in the same request Claude Code makes for `/usage`. The token never shows up in the process list or in a file.
+- It sends Claude Code's User-Agent (`claude-cli/<version>`), because the server only includes limit resets for Claude Code. It never uses a reset: only `/limit-reset` in Claude Code does that.
+- Limit resets come from an undocumented part of the report (`cedar_ember`), so they may change or stop showing up. If they do, the row just stays hidden.
+
+### What leaves your machine
+
+The extension itself makes no network requests. The only request is the optional fetch above, from your status line script to Anthropic, with your own Claude Code sign-in. Leave out that part of the snippet and nothing leaves your machine.
+
+## Update
+
+```bash
+cd ~/claude-usage-gnome && git pull && ./install.sh
+```
+
+Then log out and back in. Running `./install.sh` again recompiles the settings schema, which an update may have changed.
 
 ## Uninstall
 
 ```bash
 gnome-extensions disable claude-usage@bardswork
 rm ~/.local/share/gnome-shell/extensions/claude-usage@bardswork
+rm -r ~/.cache/claude-usage
 ```
 
-Then remove the snippet from your status line script, and delete `~/.cache/claude-usage`.
+Then remove the `source` line from your status line script.
 
 ## Docs
 
-- [Troubleshooting](docs/troubleshooting.md): no data, dimmed label, `ERROR` or `OUT OF DATE` state, other GNOME versions
-- [Development](docs/development.md): code layout, tests, testing changes in a nested shell, packaging
+- [Troubleshooting](docs/troubleshooting.md): no data, dimmed rows, missing rows, `ERROR` or `OUT OF DATE` state, other GNOME versions
+- [Development](docs/development.md): code layout, tests, testing in a nested shell, screenshots, packaging
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
 
-## Tests
-
-```bash
-TZ=UTC gjs -m tests/usage.test.js    # unit tests
-tests/headless.sh                    # loads the extension in a headless GNOME Shell
-```
-
-See [Development](docs/development.md#tests) for details.
+Tested with GNOME Shell 50 on Ubuntu 26.04 and Claude Code 2.1.325. Versions of GNOME Shell from 45 on may work: add them to `shell-version` in `metadata.json` and test.
 
 ## License
 
