@@ -41,12 +41,12 @@ Because of this:
 
 ### Fable weekly limit (optional)
 
-The status line JSON has no Fable window. It's only in the usage report that `/usage` reads from `https://api.anthropic.com/api/oauth/usage`. The second part of `statusline-snippet.sh` fetches that report, at most once every 5 minutes, using the OAuth token Claude Code saves in `~/.claude/.credentials.json`, and saves it to `~/.cache/claude-usage/usage.json`. The extension adds a "Fable weekly" row with its reset time to the menu when the file has one.
+The status line JSON has no Fable window. It's only in the usage report that `/usage` reads from `https://api.anthropic.com/api/oauth/usage`. The second part of `statusline-snippet.sh` fetches that report, at most once every 5 minutes, using the OAuth token Claude Code saves in `~/.claude/.credentials.json`, and saves it to `~/.cache/claude-usage/usage.json`. The extension adds a "Fable weekly" row with its reset time to the menu when the file has one. When the report also has Fable's share of the weekly limit, the row shows it, for example `Fable weekly: 15% used (7% of weekly, cap 50%)`: Fable has used 7% of your weekly limit and may use up to 50% of it.
 
 - It needs `curl` and `jq`, and runs in the background so the status line never waits for it.
 - The token is only sent to Anthropic's API, the same request Claude Code makes for `/usage`. It doesn't go through the process list or into any file.
 - If you don't want this, leave out that part of the snippet. The menu then has no Fable row and everything else works as before.
-- Like the rest, it only updates while Claude Code is running.
+- Like the rest, it only updates while Claude Code is running. The menu's last row says how old the report is, and the rows from it dim when it's more than 30 minutes old.
 
 ### Limit resets (optional)
 
@@ -54,6 +54,7 @@ The same fetch also asks for the limit resets that Claude Code's `/limit-reset` 
 
 - These come from an undocumented part of the usage report (`cedar_ember`), so they may change or stop showing up. If they do, the row just stays hidden.
 - The server only lists them for requests that send Claude Code's User-Agent, so the snippet sends `claude-cli/<version>`, with the version taken from the status line JSON.
+- When you're at a limit and have a reset you can use, the row turns yellow and starts with `at a limit, run /limit-reset`. During a cooldown it starts with `next usable after <time>`. A reset you can't use yet says why, for example `(blocked by the weekly limit)`.
 - The extension only shows your resets. It never uses one. To use one, run `/limit-reset` in Claude Code.
 
 ## Requirements

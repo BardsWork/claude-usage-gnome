@@ -3,8 +3,9 @@ import GLib from 'gi://GLib';
 import System from 'system';
 
 import {
-    WINDOW_SECONDS, breakdown, fableWindow, limitLevel, limitStates, paceText, readFable, readReport, readResets,
-    readUsage, resetGrants, resetText, resetsText, windowText, worstLevel,
+    WINDOW_SECONDS, ageText, breakdown, fableWindow, limitLevel, limitStates, paceText, readFable, readReport,
+    readReportFile, readResets, readUsage, resetGrants, resetState, resetText, resetUsableAtLimit, resetsText,
+    shareText, windowText, worstLevel,
 } from '../claude-usage@bardswork/usage.js';
 
 let failed = 0;
@@ -109,13 +110,20 @@ const withResets = {...report, cedar_ember: {eligible: true, grants: [
 ]}};
 
 test('resetGrants: keeps grants with resets left', () => equal(resetGrants(withResets, NOW), [
-    {kind: 'full', left: 1, ends_at: 1794348000},
-    {kind: '5-hour', left: 2, ends_at: null},
+    {kind: 'full', left: 1, ends_at: 1794348000, usable: true, blocker: null},
+    {kind: '5-hour', left: 2, ends_at: null, usable: true, blocker: null},
 ]));
 test('resetGrants: unknown type is a limit reset', () =>
     equal(resetGrants({cedar_ember: {grants: [{...grant, type: 'new_kind'}]}}, NOW), [
-        {kind: 'limit', left: 1, ends_at: 1794348000},
+        {kind: 'limit', left: 1, ends_at: 1794348000, usable: true, blocker: null},
     ]));
+test('resetGrants: why a grant is not usable', () => equal(resetGrants({cedar_ember: {grants: [
+    {...grant, usable_now: false, unavailable_reason: 'blocked_seven_day'},
+    {...grant, usable_now: false, unavailable_reason: 'something_new'},
+    {...grant, usable_now: false},
+]}}, NOW).map(g => [g.usable, g.blocker]), [
+    [false, 'blocked by the weekly limit'], [false, 'not available right now'], [false, null],
+]));
 test('resetGrants: no cedar_ember or odd data gives none', () => {
     equal(resetGrants(report, NOW), []);
     equal(resetGrants(null, NOW), []);
@@ -125,6 +133,60 @@ test('resetGrants: no cedar_ember or odd data gives none', () => {
 });
 test('resetsText: one line per grant', () => equal(resetsText(resetGrants(withResets, NOW)),
     '1 full reset, use by Tue Nov 10; 2 5-hour resets'));
+test('resetsText: says why a reset is not usable', () => equal(resetsText([
+    {kind: 'full', left: 1, ends_at: null, usable: false, blocker: 'cooling down'},
+    {kind: 'weekly', left: 1, ends_at: null, usable: false, blocker: null},
+]), '1 full reset (cooling down); 1 weekly reset (not usable yet)'));
+
+const usable = [{kind: 'full', left: 1, ends_at: null, usable: true, blocker: null}];
+test('resetState: at limit and cooldown', () => {
+    equal(resetState({cedar_ember: {at_limit: true, cooldown_until: '2026-10-20T14:00:00+00:00'}}),
+        {at_limit: true, cooldown_until: NOW + 7200});
+    equal(resetState(null), {at_limit: false, cooldown_until: null});
+    equal(resetState({cedar_ember: {at_limit: 'yes', cooldown_until: 'soon'}}), {at_limit: false, cooldown_until: null});
+});
+test('resetsText: at a limit with a usable reset', () => {
+    const state = {at_limit: true, cooldown_until: null};
+    equal(resetUsableAtLimit(usable, state), true);
+    equal(resetsText(usable, state, NOW), 'at a limit, run /limit-reset · 1 full reset');
+});
+test('resetsText: at a limit without a usable reset', () => {
+    const blocked = [{...usable[0], usable: false, blocker: 'cooling down'}];
+    equal(resetUsableAtLimit(blocked, {at_limit: true}), false);
+    equal(resetsText(blocked, {at_limit: true}, NOW), '1 full reset (cooling down)');
+});
+test('resetsText: cooldown time, only while it lasts', () => {
+    equal(resetsText(usable, {at_limit: true, cooldown_until: NOW + 7200}, NOW),
+        'next usable after Tue 14:00 · 1 full reset');
+    equal(resetsText(usable, {at_limit: false, cooldown_until: NOW - 60}, NOW), '1 full reset');
+});
+
+const shared = {...report, weekly_scoped_shares: [
+    {limit_index: 0, used_percent_of_weekly: 99, allowance_percent_of_weekly: 99},
+    {limit_index: 2, used_percent_of_weekly: 7.6, allowance_percent_of_weekly: 50},
+]};
+test('fableWindow: adds Fable\'s share of the weekly limit', () => equal(fableWindow(shared),
+    {used_percentage: 15, resets_at: 1792789200, share_used: 7.6, share_allowance: 50}));
+test('fableWindow: ignores shares for other rows or with odd values', () => {
+    equal(fableWindow({...report, weekly_scoped_shares: [{limit_index: 5, used_percent_of_weekly: 1, allowance_percent_of_weekly: 50}]}),
+        {used_percentage: 15, resets_at: 1792789200});
+    equal(fableWindow({...report, weekly_scoped_shares: [{limit_index: 2, used_percent_of_weekly: '1'}]}),
+        {used_percentage: 15, resets_at: 1792789200});
+    equal(fableWindow({...report, weekly_scoped_shares: 'x'}), {used_percentage: 15, resets_at: 1792789200});
+});
+test('shareText: share of weekly', () => {
+    equal(shareText(fableWindow(shared)), '8% of weekly, cap 50%');
+    equal(shareText(fableWindow(report)), '');
+});
+
+test('ageText: minutes, hours, days', () => {
+    equal(ageText(30), '1 min');
+    equal(ageText(4 * 60), '4 min');
+    equal(ageText(119 * 60), '119 min');
+    equal(ageText(3 * 3600), '3 h');
+    equal(ageText(3 * 86400), '3 d');
+    equal(ageText(-10), '0 min');
+});
 
 test('readResets: missing file gives none', () => {
     GLib.unlink(path);
@@ -139,6 +201,13 @@ test('readResets: half-written file gives none', () => {
     equal(readResets(path, NOW), []);
 });
 
+test('readReportFile: report and modified time', () => {
+    GLib.file_set_contents(path, JSON.stringify(report));
+    const file = readReportFile(path);
+    equal(file.report, report);
+    const now = Math.floor(GLib.DateTime.new_now_local().to_unix());
+    if (Math.abs(now - file.updated) > 5) throw new Error(`modified time ${file.updated} is not about now (${now})`);
+});
 test('readReport: missing or half-written file returns null', () => {
     GLib.unlink(path);
     equal(readReport(path), null);

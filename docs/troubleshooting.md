@@ -62,6 +62,10 @@ jq '.cedar_ember | {eligible, ineligible_reason, grants: [.grants[]? | {label, r
 - **`ineligible_reason` is `surface` or `cli_version`:** the request didn't send Claude Code's User-Agent, or the version in it was missing. Copy the current block, and check that `jq -r .version ~/.cache/claude-usage/statusline.json` prints a version.
 - **No grants, or `resets_left` is 0 everywhere:** you have no resets to use right now, so there's nothing to show.
 
+## The Fable, resets or weekly-by-surface rows are dimmed
+
+The usage report they come from is more than 30 minutes old. The menu's last row says how old it is. The fetch runs at most every 5 minutes while Claude Code is running, so the report is either out of date because no session has run for a while, or the fetch is failing. To retry now, run `rm ~/.cache/claude-usage/usage.attempt` and send a message in Claude Code. If it stays old, see [The menu has no Fable row](#the-menu-has-no-fable-row) for the checks.
+
 ## The label is dimmed
 
 The numbers are more than 15 minutes old. No Claude Code session has refreshed its status line since then. It brightens again the next time one does.

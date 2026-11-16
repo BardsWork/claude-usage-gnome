@@ -20,26 +20,67 @@ export function readUsage(path) {
     }
 }
 
+/** An ISO 8601 time as Unix seconds. Null if missing or unreadable. */
+function isoToUnix(iso) {
+    if (typeof iso !== 'string') return null;
+    const t = GLib.DateTime.new_from_iso8601(iso, null);
+    return t ? t.to_unix() : null;
+}
+
 /**
  * The Fable weekly window from a saved usage report, in the same shape as the status line's
- * windows ({used_percentage, resets_at} in Unix seconds). Null if there isn't one.
+ * windows ({used_percentage, resets_at} in Unix seconds). Null if there isn't one. When the
+ * report has Fable's share of the weekly limit, also share_used and share_allowance: how much
+ * of the weekly limit Fable has used, and how much of it Fable may use, both in percent.
  */
 export function fableWindow(report) {
-    const row = (report?.limits ?? []).find(l =>
+    const limits = Array.isArray(report?.limits) ? report.limits : [];
+    const index = limits.findIndex(l =>
         l?.kind === 'weekly_scoped' && /^fable\b/i.test(String(l.scope?.model?.display_name ?? '')));
+    const row = limits[index];
     if (typeof row?.percent !== 'number') return null;
-    const resets = row.resets_at ? GLib.DateTime.new_from_iso8601(row.resets_at, null) : null;
-    return {used_percentage: row.percent, resets_at: resets ? resets.to_unix() : null};
+    const win = {used_percentage: row.percent, resets_at: isoToUnix(row.resets_at)};
+    const share = (Array.isArray(report.weekly_scoped_shares) ? report.weekly_scoped_shares : [])
+        .find(s => s?.limit_index === index);
+    if (typeof share?.used_percent_of_weekly === 'number' && typeof share.allowance_percent_of_weekly === 'number') {
+        win.share_used = share.used_percent_of_weekly;
+        win.share_allowance = share.allowance_percent_of_weekly;
+    }
+    return win;
+}
+
+/** Fable's share of the weekly limit, for example "8% of weekly, cap 50%". Empty without one. */
+export function shareText(win) {
+    if (typeof win?.share_allowance !== 'number') return '';
+    return `${Math.round(win.share_used)}% of weekly, cap ${Math.round(win.share_allowance)}%`;
+}
+
+/**
+ * Reads the saved usage report and when it was saved: {report, updated} with updated in Unix
+ * seconds. Null if the file is missing or half written.
+ */
+export function readReportFile(path) {
+    try {
+        const file = Gio.File.new_for_path(path);
+        const info = file.query_info('time::modified', Gio.FileQueryInfoFlags.NONE, null);
+        const [, bytes] = file.load_contents(null);
+        return {report: JSON.parse(new TextDecoder().decode(bytes)), updated: info.get_modification_date_time().to_unix()};
+    } catch {
+        return null;
+    }
 }
 
 /** Reads the saved usage report. Null if the file is missing or half written. */
 export function readReport(path) {
-    try {
-        const [, bytes] = Gio.File.new_for_path(path).load_contents(null);
-        return JSON.parse(new TextDecoder().decode(bytes));
-    } catch {
-        return null;
-    }
+    return readReportFile(path)?.report ?? null;
+}
+
+/** How long ago something was, for example "4 min", "3 h" or "2 d". */
+export function ageText(seconds) {
+    const mins = Math.max(0, Math.round(seconds / 60));
+    if (mins < 120) return `${mins} min`;
+    if (mins < 48 * 60) return `${Math.round(mins / 60)} h`;
+    return `${Math.round(mins / 1440)} d`;
 }
 
 /** Reads the Fable weekly window from the saved usage report. Null if missing or unreadable. */
@@ -69,21 +110,50 @@ export function resetText(win, now) {
 
 const RESET_KINDS = {session: '5-hour', weekly: 'weekly', full: 'full'};
 
+// Why a grant can't be used right now, from Claude Code's list of unavailable_reason values
+const RESET_BLOCKERS = {
+    cooldown: 'cooling down',
+    blocked_five_hour: 'blocked by the 5-hour limit',
+    blocked_seven_day: 'blocked by the weekly limit',
+    blocked_opus: 'blocked by a model limit',
+    blocked_sonnet: 'blocked by a model limit',
+    blocked_other: 'blocked by another limit',
+    cannot_clear: "can't clear your current limit",
+    needs_limit: 'only at a limit',
+};
+
 /**
  * The limit resets left to use (the ones /limit-reset spends), from a saved usage report's
- * cedar_ember field: [{kind, left, ends_at}] with ends_at in Unix seconds or null. Grants that
- * are used up, paused or past their end date are left out. Empty if there are none.
+ * cedar_ember field: [{kind, left, ends_at, usable, blocker}]. ends_at is in Unix seconds or
+ * null, usable is whether it can be used right now, and blocker says why not, or is null.
+ * Grants that are used up, paused or past their end date are left out. Empty if none.
  */
 export function resetGrants(report, now) {
     const grants = report?.cedar_ember?.grants;
     if (!Array.isArray(grants)) return [];
     return grants.flatMap(g => {
         if (!Number.isInteger(g?.resets_left) || g.resets_left < 1 || g.paused) return [];
-        const ends = g.ends_at ? GLib.DateTime.new_from_iso8601(g.ends_at, null) : null;
-        const ends_at = ends ? ends.to_unix() : null;
+        const ends_at = isoToUnix(g.ends_at);
         if (ends_at !== null && ends_at <= now) return [];
-        return [{kind: RESET_KINDS[g.type] ?? 'limit', left: g.resets_left, ends_at}];
+        const reason = typeof g.unavailable_reason === 'string' ? g.unavailable_reason : null;
+        return [{
+            kind: RESET_KINDS[g.type] ?? 'limit',
+            left: g.resets_left,
+            ends_at,
+            usable: g.usable_now === true,
+            blocker: reason ? RESET_BLOCKERS[reason] ?? 'not available right now' : null,
+        }];
     });
+}
+
+/**
+ * Whether you're at a limit, and until when resets are cooling down, from a saved usage
+ * report's cedar_ember field: {at_limit, cooldown_until} with cooldown_until in Unix seconds
+ * or null.
+ */
+export function resetState(report) {
+    const ce = report?.cedar_ember;
+    return {at_limit: ce?.at_limit === true, cooldown_until: isoToUnix(ce?.cooldown_until)};
 }
 
 /** Reads the limit resets left from the saved usage report. Empty if missing or unreadable. */
@@ -91,13 +161,30 @@ export function readResets(path, now) {
     return resetGrants(readReport(path), now);
 }
 
-/** Limit resets as one line, for example "1 full reset, use by Thu Dec 10". */
-export function resetsText(grants) {
-    return grants.map(g => {
-        const what = `${g.left} ${g.kind} reset${g.left === 1 ? '' : 's'}`;
-        if (g.ends_at === null) return what;
-        return `${what}, use by ${GLib.DateTime.new_from_unix_local(g.ends_at).format('%a %b %-d')}`;
-    }).join('; ');
+/**
+ * Limit resets as one line, for example "1 full reset, use by Thu Dec 10". With a state from
+ * resetState(), it also says when you're at a limit with a reset you can use, when resets are
+ * cooling down, and why a reset can't be used yet.
+ */
+export function resetsText(grants, state = {}, now = 0) {
+    const parts = grants.map(g => {
+        let what = `${g.left} ${g.kind} reset${g.left === 1 ? '' : 's'}`;
+        if (g.ends_at !== null) what += `, use by ${GLib.DateTime.new_from_unix_local(g.ends_at).format('%a %b %-d')}`;
+        if (g.blocker) what += ` (${g.blocker})`;
+        else if (!g.usable) what += ' (not usable yet)';
+        return what;
+    });
+    let text = parts.join('; ');
+    if (state.cooldown_until && state.cooldown_until > now)
+        text = `next usable after ${GLib.DateTime.new_from_unix_local(state.cooldown_until).format('%a %H:%M')} · ${text}`;
+    else if (resetUsableAtLimit(grants, state))
+        text = `at a limit, run /limit-reset · ${text}`;
+    return text;
+}
+
+/** Whether you're at a limit and have a reset you can use right now. */
+export function resetUsableAtLimit(grants, state) {
+    return state?.at_limit === true && grants.some(g => g.usable);
 }
 
 /** Window lengths in seconds, for the pace. */
