@@ -3,7 +3,8 @@ import GLib from 'gi://GLib';
 import System from 'system';
 
 import {
-    fableWindow, readFable, readResets, readUsage, resetGrants, resetText, resetsText, windowText,
+    WINDOW_SECONDS, breakdown, fableWindow, limitLevel, limitStates, paceText, readFable, readReport, readResets,
+    readUsage, resetGrants, resetText, resetsText, windowText, worstLevel,
 } from '../claude-usage@bardswork/usage.js';
 
 let failed = 0;
@@ -138,7 +139,83 @@ test('readResets: half-written file gives none', () => {
     equal(readResets(path, NOW), []);
 });
 
-GLib.unlink(path);
+test('readReport: missing or half-written file returns null', () => {
+    GLib.unlink(path);
+    equal(readReport(path), null);
+    GLib.file_set_contents(path, '{"limits": [');
+    equal(readReport(path), null);
+});
+
+const states = {limits: [
+    {kind: 'session', percent: 81, severity: 'normal', is_active: false},
+    {kind: 'weekly_all', percent: 12, severity: 'warning', is_active: true},
+    {kind: 'weekly_scoped', percent: 15, severity: 'normal', scope: {model: {display_name: 'Sonnet'}}},
+    {kind: 'weekly_scoped', percent: 15, scope: {model: {display_name: 'Fable'}}},
+]};
+test('limitStates: severity and active per window', () => equal(limitStates(states), {
+    five_hour: {severity: 'normal', active: false},
+    seven_day: {severity: 'warning', active: true},
+    fable: {severity: null, active: false},
+}));
+test('limitStates: missing or odd report gives none', () => {
+    equal(limitStates(null), {});
+    equal(limitStates({limits: 'x'}), {});
+    equal(limitStates({limits: [null, {kind: 'other'}]}), {});
+});
+
+const at = pct => ({used_percentage: pct, resets_at: NOW + 3600});
+test('limitLevel: from the used percentage', () => {
+    equal(limitLevel(at(50), null, NOW), 'normal');
+    equal(limitLevel(at(80), null, NOW), 'warning');
+    equal(limitLevel(at(95), 'normal', NOW), 'critical');
+});
+test('limitLevel: any severity but normal is at least a warning', () => {
+    equal(limitLevel(at(10), 'warning', NOW), 'warning');
+    equal(limitLevel(at(10), 'something_new', NOW), 'warning');
+    equal(limitLevel(at(97), 'warning', NOW), 'critical');
+});
+test('limitLevel: past the reset or no window is normal', () => {
+    equal(limitLevel({used_percentage: 99, resets_at: NOW - 1}, 'critical', NOW), 'normal');
+    equal(limitLevel(undefined, 'warning', NOW), 'normal');
+});
+test('worstLevel: picks the worse', () => {
+    equal(worstLevel('normal', 'warning'), 'warning');
+    equal(worstLevel('critical', 'warning'), 'critical');
+    equal(worstLevel(), 'normal');
+});
+
+test('breakdown: rows by share, largest first', () => equal(breakdown({seven_day_breakdown: {rows: [
+    {key: 'chat', display_name: 'Chats', percent: 0},
+    {key: 'claude_code', display_name: 'Claude Code', percent: 95},
+    {key: 'cowork', display_name: 'Cowork', percent: 5},
+]}}), [{name: 'Claude Code', percent: 95}, {name: 'Cowork', percent: 5}, {name: 'Chats', percent: 0}]));
+test('breakdown: falls back to the key and skips odd rows', () => equal(breakdown({seven_day_breakdown: {rows: [
+    {key: 'new_surface', percent: 7}, null, {display_name: 'x'}, {key: 'y', percent: '3'},
+]}}), [{name: 'new_surface', percent: 7}]));
+test('breakdown: missing gives none', () => {
+    equal(breakdown(null), []);
+    equal(breakdown({seven_day_breakdown: null}), []);
+});
+
+// Halfway through a 5-hour window
+const half = pct => ({used_percentage: pct, resets_at: NOW + WINDOW_SECONDS.five_hour / 2});
+test('paceText: below, on and above pace', () => {
+    equal(paceText(half(20), WINDOW_SECONDS.five_hour, NOW), 'below pace');
+    equal(paceText(half(50), WINDOW_SECONDS.five_hour, NOW), 'on pace');
+    // 80% in 2.5h is 32%/h, so the last 20% takes 37.5 more minutes
+    equal(paceText(half(80), WINDOW_SECONDS.five_hour, NOW), 'above pace, limit around Tue 12:37');
+});
+test('paceText: at the limit', () => equal(paceText(half(100), WINDOW_SECONDS.five_hour, NOW), 'at limit'));
+test('paceText: nothing early in the window, after the reset or without a reset time', () => {
+    equal(paceText({used_percentage: 30, resets_at: NOW + 17000}, WINDOW_SECONDS.five_hour, NOW), '');
+    equal(paceText({used_percentage: 30, resets_at: NOW - 1}, WINDOW_SECONDS.five_hour, NOW), '');
+    equal(paceText({used_percentage: 30}, WINDOW_SECONDS.five_hour, NOW), '');
+    equal(paceText(undefined, WINDOW_SECONDS.five_hour, NOW), '');
+});
+test('paceText: weekly window', () => equal(
+    paceText({used_percentage: 13, resets_at: NOW + 5 * 86400}, WINDOW_SECONDS.seven_day, NOW), 'below pace'));
+
+if (GLib.file_test(path, GLib.FileTest.EXISTS)) GLib.unlink(path);
 GLib.rmdir(tmp);
 print(failed ? `\n${failed} failed` : '\nall passed');
 System.exit(failed ? 1 : 0);

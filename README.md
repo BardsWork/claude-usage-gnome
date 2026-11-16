@@ -8,7 +8,13 @@ A GNOME Shell extension that shows your Claude Pro or Max plan usage in the top 
 
 ![The extension in the GNOME top bar with its menu open, showing 33% of the 5-hour window and 63% of the weekly limit used](docs/screenshot.png)
 
-The first number is your 5-hour session window. The second is your weekly limit. Click it to see when each one resets and how old the numbers are, plus your Fable weekly limit and any limit resets you have left to use, if you turn that on.
+The first number is your 5-hour session window. The second is your weekly limit. The label turns yellow at 80% and red at 95%. Click it to see when each one resets, whether you're using it faster than it refills, and how old the numbers are.
+
+If you turn on the [usage report fetch](#fable-weekly-limit-optional), the menu also has your Fable weekly limit, any limit resets you have left to use, and where your weekly usage went (Claude Code, chats, Cowork). The label then also turns yellow when the server marks a limit as anything other than normal, and the limit that applies right now is shown in bold.
+
+### Pace
+
+Each row says whether you're below, on, or above pace: your % used against the % of the window that has passed. Above pace, it also says when you'd hit the limit at that rate, for example `above pace, limit around Wed 18:20`. It shows nothing in the first 10% of a window, where the rate is too noisy to mean much.
 
 - No login, no API key, no network calls in the extension. It reads files that Claude Code's status line writes.
 - About 100 lines of JavaScript, with unit tests and a headless GNOME Shell test.

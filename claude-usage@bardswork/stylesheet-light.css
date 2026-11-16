@@ -1,0 +1,13 @@
+/* Light shell style. Close to a limit: GNOME palette orange 5 and red 4, dark enough for light menus. */
+.claude-usage-warning {
+    color: #c64600;
+}
+
+.claude-usage-critical {
+    color: #c01c28;
+}
+
+/* The limit that applies right now, per the usage report */
+.claude-usage-active {
+    font-weight: bold;
+}
