@@ -8,13 +8,17 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {
-    DEFAULT_FILE, USAGE_REPORT_FILE, WINDOW_SECONDS, breakdown, fableWindow, limitLevel, limitStates, paceText,
-    readReport, readUsage, resetGrants, resetText, resetsText, windowText, worstLevel,
+    DEFAULT_FILE, USAGE_REPORT_FILE, WINDOW_SECONDS, ageText, breakdown, fableWindow, limitLevel, limitStates,
+    paceText, readReportFile, readUsage, resetGrants, resetState, resetText, resetUsableAtLimit, resetsText,
+    shareText, windowText, worstLevel,
 } from './usage.js';
 
 const REFRESH_SECONDS = 30;
 // Older than this, the numbers may be out of date (no Claude Code session running)
 const STALE_SECONDS = 15 * 60;
+// The usage report is fetched at most every 5 minutes. Much older, the fetch is probably failing
+const REPORT_STALE_SECONDS = 30 * 60;
+const DIMMED = 140;
 const LEVEL_CLASSES = ['claude-usage-warning', 'claude-usage-critical'];
 
 /** Colors an actor for a level from limitLevel(), and bolds it when it's the active limit. */
@@ -25,10 +29,11 @@ function setLevel(actor, level, active = false) {
     else actor.remove_style_class_name('claude-usage-active');
 }
 
-/** A menu row's text: the percentage, the reset time and, when there is one, the pace. */
-function rowText(name, win, length, now) {
+/** A menu row's text: the percentage, any detail, the reset time and, when there is one, the pace. */
+function rowText(name, win, length, now, detail = '') {
     const pace = paceText(win, length, now);
-    return `${name}: ${windowText(win, now)} used, resets ${resetText(win, now)}${pace ? ` · ${pace}` : ''}`;
+    return `${name}: ${windowText(win, now)} used${detail ? ` (${detail})` : ''}, ` +
+        `resets ${resetText(win, now)}${pace ? ` · ${pace}` : ''}`;
 }
 
 export default class ClaudeUsageExtension extends Extension {
@@ -90,14 +95,18 @@ export default class ClaudeUsageExtension extends Extension {
         const {five_hour: five, seven_day: week} = usage.limits;
         const age = now - usage.updated;
 
-        const report = readReport(USAGE_REPORT_FILE);
+        const reportFile = readReportFile(USAGE_REPORT_FILE);
+        const report = reportFile?.report ?? null;
+        const reportAge = reportFile ? now - reportFile.updated : null;
+        // Rows from the usage report dim when it's much older than it should be
+        const reportOpacity = reportAge !== null && reportAge > REPORT_STALE_SECONDS ? DIMMED : 255;
         const states = limitStates(report);
         const fable = fableWindow(report);
         const fiveLevel = limitLevel(five, states.five_hour?.severity, now);
         const weekLevel = limitLevel(week, states.seven_day?.severity, now);
 
         this._label.text = `Claude ${windowText(five, now)} · ${windowText(week, now)}`;
-        this._label.opacity = age > STALE_SECONDS ? 140 : 255;
+        this._label.opacity = age > STALE_SECONDS ? DIMMED : 255;
         setLevel(this._label, worstLevel(fiveLevel, weekLevel));
 
         this._fiveItem.label.text = rowText('5-hour', five, WINDOW_SECONDS.five_hour, now);
@@ -107,19 +116,28 @@ export default class ClaudeUsageExtension extends Extension {
 
         const surfaces = breakdown(report);
         this._breakdownItem.visible = surfaces.length > 0;
+        this._breakdownItem.opacity = reportOpacity;
         this._breakdownItem.menu.removeAll();
         for (const {name, percent} of surfaces)
             this._breakdownItem.menu.addMenuItem(new PopupMenu.PopupMenuItem(`${name}: ${Math.round(percent)}%`, {reactive: false}));
 
         this._fableItem.visible = fable !== null;
+        this._fableItem.opacity = reportOpacity;
         if (fable) {
-            this._fableItem.label.text = rowText('Fable weekly', fable, WINDOW_SECONDS.seven_day, now);
+            this._fableItem.label.text = rowText('Fable weekly', fable, WINDOW_SECONDS.seven_day, now, shareText(fable));
             setLevel(this._fableItem.label, limitLevel(fable, states.fable?.severity, now), states.fable?.active);
         }
         const resets = resetGrants(report, now);
+        const state = resetState(report);
         this._resetsItem.visible = resets.length > 0;
-        if (resets.length) this._resetsItem.label.text = `Limit resets: ${resetsText(resets)}`;
+        this._resetsItem.opacity = reportOpacity;
+        if (resets.length) {
+            this._resetsItem.label.text = `Limit resets: ${resetsText(resets, state, now)}`;
+            // At a limit with a reset you can use is when this row matters
+            setLevel(this._resetsItem.label, resetUsableAtLimit(resets, state) ? 'warning' : 'normal');
+        }
 
-        this._ageItem.label.text = `Updated ${Math.round(age / 60)} min ago (from Claude Code)`;
+        const reportText = reportAge === null ? '' : ` · usage report ${ageText(reportAge)} ago`;
+        this._ageItem.label.text = `Updated ${ageText(age)} ago (from Claude Code)${reportText}`;
     }
 }

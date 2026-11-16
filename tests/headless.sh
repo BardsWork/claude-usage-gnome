@@ -31,12 +31,15 @@ if [[ "${1:-}" != "--no-data" ]]; then
     printf '{"rate_limits":{"five_hour":{"used_percentage":33,"resets_at":%d},"seven_day":{"used_percentage":63,"resets_at":%d}}}' \
         $((now + 7200)) $((now + 300000)) > "$XDG_CACHE_HOME/claude-usage/statusline.json"
     week_resets=$(date -u -d @$((now + 300000)) +%Y-%m-%dT%H:%M:%S+00:00)
-    printf '{"limits":[%s,%s,%s],"seven_day_breakdown":{"rows":[%s,%s]}}' \
+    printf '{"limits":[%s,%s,%s],"seven_day_breakdown":{"rows":[%s,%s]},%s,%s}' \
         '{"kind":"session","group":"session","percent":33,"severity":"normal","is_active":false}' \
         '{"kind":"weekly_all","group":"weekly","percent":63,"severity":"warning","is_active":true}' \
         "{\"kind\":\"weekly_scoped\",\"group\":\"weekly\",\"percent\":15,\"resets_at\":\"$week_resets\",\"scope\":{\"model\":{\"display_name\":\"Fable\"}}}" \
         '{"key":"claude_code","display_name":"Claude Code","percent":95}' \
-        '{"key":"chat","display_name":"Chats","percent":5}' > "$XDG_CACHE_HOME/claude-usage/usage.json"
+        '{"key":"chat","display_name":"Chats","percent":5}' \
+        '"weekly_scoped_shares":[{"limit_index":2,"used_percent_of_weekly":7,"allowance_percent_of_weekly":50}]' \
+        "\"cedar_ember\":{\"at_limit\":true,\"grants\":[{\"type\":\"full\",\"resets_left\":1,\"usable_now\":true,\"ends_at\":\"$week_resets\"}]}" \
+        > "$XDG_CACHE_HOME/claude-usage/usage.json"
 fi
 
 dbus-run-session -- bash -c "
