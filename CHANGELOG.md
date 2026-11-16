@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Current session rows: project, model, context used and cost at API prices for the session that refreshed the status line last ([#10](https://github.com/BardsWork/claude-usage-gnome/issues/10)), and how long its prompt cache stays warm, with the hit ratio ([#11](https://github.com/BardsWork/claude-usage-gnome/issues/11)).
 - Fable row shows Fable's share of the weekly limit, for example `7% of weekly, cap 50%` ([#7](https://github.com/BardsWork/claude-usage-gnome/issues/7)).
 - Limit resets row says when you're at a limit with a reset you can use (and turns yellow), when resets are cooling down, and why a reset can't be used yet ([#8](https://github.com/BardsWork/claude-usage-gnome/issues/8)).
 - Last menu row shows the usage report's age, and the rows from it dim when it's more than 30 minutes old ([#14](https://github.com/BardsWork/claude-usage-gnome/issues/14)).

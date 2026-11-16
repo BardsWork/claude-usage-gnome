@@ -3,9 +3,9 @@ import GLib from 'gi://GLib';
 import System from 'system';
 
 import {
-    WINDOW_SECONDS, ageText, breakdown, fableWindow, limitLevel, limitStates, paceText, readFable, readReport,
+    WINDOW_SECONDS, ageText, breakdown, cacheText, fableWindow, limitLevel, limitStates, paceText, readFable, readReport,
     readReportFile, readResets, readUsage, resetGrants, resetState, resetText, resetUsableAtLimit, resetsText,
-    shareText, windowText, worstLevel,
+    sessionText, shareText, tokensText, windowText, worstLevel,
 } from '../claude-usage@bardswork/usage.js';
 
 let failed = 0;
@@ -51,6 +51,7 @@ test('readUsage: reads rate limits and modified time', () => {
     GLib.file_set_contents(path, JSON.stringify({model: {id: 'x'}, rate_limits: limits}));
     const usage = readUsage(path);
     equal(usage.limits, limits);
+    equal(usage.data.model, {id: 'x'});
     const now = Math.floor(GLib.DateTime.new_now_local().to_unix());
     if (Math.abs(now - usage.updated) > 5) throw new Error(`modified time ${usage.updated} is not about now (${now})`);
 });
@@ -283,6 +284,40 @@ test('paceText: nothing early in the window, after the reset or without a reset 
 });
 test('paceText: weekly window', () => equal(
     paceText({used_percentage: 13, resets_at: NOW + 5 * 86400}, WINDOW_SECONDS.seven_day, NOW), 'below pace'));
+
+const session = {
+    workspace: {project_dir: '/home/me/code/my-repo', current_dir: '/home/me/code/my-repo/src'},
+    model: {id: 'claude-opus-5-5', display_name: 'Opus 5.5'},
+    context_window: {used_percentage: 16.4, context_window_size: 1000000},
+    cost: {total_cost_usd: 4.7013674},
+    prompt_cache: {warm: true, caching_observed: true, expires_at: NOW + 42 * 60 - 30, hit_ratio: 0.987},
+};
+test('tokensText: short forms', () => {
+    equal(tokensText(1000000), '1M');
+    equal(tokensText(1500000), '1.5M');
+    equal(tokensText(200000), '200k');
+    equal(tokensText(850), '850');
+});
+test('sessionText: project, model, context and cost', () => equal(sessionText(session),
+    'my-repo · Opus 5.5 · context 16% of 1M · $4.70 at API prices'));
+test('sessionText: leaves out what is missing', () => {
+    equal(sessionText({model: {display_name: 'Haiku 5.5'}, context_window: {used_percentage: 3}}), 'Haiku 5.5 · context 3%');
+    equal(sessionText({cwd: '/tmp/x'}), 'x');
+    equal(sessionText({}), '');
+    equal(sessionText(null), '');
+});
+test('cacheText: warm, with time left and hit ratio', () => equal(cacheText(session, NOW), 'warm for 42m · 99% hits'));
+test('cacheText: over an hour left', () => equal(
+    cacheText({prompt_cache: {warm: true, expires_at: NOW + 65 * 60}}, NOW), 'warm for 1h 5m'));
+test('cacheText: cold after it expires', () => equal(
+    cacheText({prompt_cache: {warm: true, expires_at: NOW - 3600, hit_ratio: 0.5}}, NOW), 'cold since Tue 11:00 · 50% hits'));
+test('cacheText: cold when the session says so', () => equal(
+    cacheText({prompt_cache: {warm: false, expires_at: NOW + 600}}, NOW), 'cold since Tue 12:00'));
+test('cacheText: nothing without a cache', () => {
+    equal(cacheText({}, NOW), '');
+    equal(cacheText({prompt_cache: {caching_observed: false, expires_at: NOW + 60}}, NOW), '');
+    equal(cacheText({prompt_cache: {warm: true, expires_at: '2026-10-20T13:00:00Z'}}, NOW), '');
+});
 
 if (GLib.file_test(path, GLib.FileTest.EXISTS)) GLib.unlink(path);
 GLib.rmdir(tmp);

@@ -7,14 +7,17 @@ export const DEFAULT_FILE = GLib.build_filenamev([GLib.get_home_dir(), '.cache',
 /** Where the status line hook saves claude.ai's usage report, which has the Fable window. */
 export const USAGE_REPORT_FILE = GLib.build_filenamev([GLib.get_home_dir(), '.cache', 'claude-usage', 'usage.json']);
 
-/** Reads the saved status line JSON. Returns null if the file is missing or half written. */
+/**
+ * Reads the saved status line JSON: {limits, updated, data} with the rate limits, when it was
+ * saved in Unix seconds, and the whole JSON. Returns null if the file is missing or half written.
+ */
 export function readUsage(path) {
     try {
         const file = Gio.File.new_for_path(path);
         const info = file.query_info('time::modified', Gio.FileQueryInfoFlags.NONE, null);
         const [, bytes] = file.load_contents(null);
         const data = JSON.parse(new TextDecoder().decode(bytes));
-        return {limits: data.rate_limits ?? {}, updated: info.get_modification_date_time().to_unix()};
+        return {limits: data.rate_limits ?? {}, updated: info.get_modification_date_time().to_unix(), data};
     } catch {
         return null;
     }
@@ -258,4 +261,53 @@ export function paceText(win, length, now) {
     // Above pace always hits the limit before the reset: (100 - used) / rate < time left
     const hitAt = Math.round(now + (100 - used) / (used / elapsed));
     return `above pace, limit around ${GLib.DateTime.new_from_unix_local(hitAt).format('%a %H:%M')}`;
+}
+
+/** A token count in short form, for example "1M", "200k" or "850". */
+export function tokensText(n) {
+    if (n >= 1e6) return `${+(n / 1e6).toFixed(1)}M`;
+    if (n >= 1e3) return `${Math.round(n / 1e3)}k`;
+    return `${n}`;
+}
+
+/** A duration in minutes as "42m" or "1h 5m". */
+function minutesText(mins) {
+    return mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+/**
+ * The Claude Code session that last refreshed the status line, in one line: project, model,
+ * context used and cost, for example "my-repo · Opus 5.5 · context 16% of 1M · $4.70 at API
+ * prices". Each part is left out when the status line JSON doesn't have it. Empty if none do.
+ */
+export function sessionText(data) {
+    const parts = [];
+    const dir = data?.workspace?.project_dir ?? data?.workspace?.current_dir ?? data?.cwd;
+    if (typeof dir === 'string' && dir) parts.push(GLib.path_get_basename(dir));
+    if (typeof data?.model?.display_name === 'string') parts.push(data.model.display_name);
+    const ctx = data?.context_window;
+    if (typeof ctx?.used_percentage === 'number') {
+        const size = typeof ctx.context_window_size === 'number' ? ` of ${tokensText(ctx.context_window_size)}` : '';
+        parts.push(`context ${Math.round(ctx.used_percentage)}%${size}`);
+    }
+    // On a subscription this is what the session would cost at API prices, not what you pay
+    const cost = data?.cost?.total_cost_usd;
+    if (typeof cost === 'number') parts.push(`$${cost.toFixed(2)} at API prices`);
+    return parts.join(' · ');
+}
+
+/**
+ * The last session's prompt cache: "warm for 42m · 99% hits" until it expires, then
+ * "cold since Mon 16:10". Empty when the status line JSON has no prompt cache or the session
+ * hasn't cached anything.
+ */
+export function cacheText(data, now) {
+    const cache = data?.prompt_cache;
+    if (!cache || cache.caching_observed === false || typeof cache.expires_at !== 'number') return '';
+    const hits = typeof cache.hit_ratio === 'number' ? ` · ${Math.round(cache.hit_ratio * 100)}% hits` : '';
+    if (cache.expires_at <= now || cache.warm === false) {
+        const since = GLib.DateTime.new_from_unix_local(Math.min(cache.expires_at, now)).format('%a %H:%M');
+        return `cold since ${since}${hits}`;
+    }
+    return `warm for ${minutesText(Math.ceil((cache.expires_at - now) / 60))}${hits}`;
 }
