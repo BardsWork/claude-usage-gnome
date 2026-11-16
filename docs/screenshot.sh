@@ -24,6 +24,7 @@ export XDG_RUNTIME_DIR="$sandbox/run"
 mkdir -p "$XDG_DATA_HOME/gnome-shell/extensions" "$XDG_CACHE_HOME/claude-usage" "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 cp -r "$repo/$uuid" "$XDG_DATA_HOME/gnome-shell/extensions/"
+glib-compile-schemas "$XDG_DATA_HOME/gnome-shell/extensions/$uuid/schemas"
 
 now=$(date +%s)
 data="$XDG_CACHE_HOME/claude-usage/statusline.json"

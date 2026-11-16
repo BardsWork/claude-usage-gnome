@@ -86,7 +86,9 @@ Look at the shell log for the reason:
 journalctl --user -b | grep -i claude-usage
 ```
 
-Please [open an issue](https://github.com/BardsWork/claude-usage-gnome/issues/new?template=bug_report.yml) with the output.
+If it mentions `GSettings schema` or `org.gnome.shell.extensions.claude-usage`, the settings schema isn't compiled. That happens after pulling an update that added settings to a symlinked install. Run `./install.sh` again, then log out and back in.
+
+Otherwise, please [open an issue](https://github.com/BardsWork/claude-usage-gnome/issues/new?template=bug_report.yml) with the output.
 
 ## State is `OUT OF DATE`, or the extension isn't listed for my GNOME version
 

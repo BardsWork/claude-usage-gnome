@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.claude-usage" path="/org/gnome/shell/extensions/claude-usage/">
+    <key name="notify-limits" type="b">
+      <default>true</default>
+      <summary>Notify near a limit</summary>
+      <description>Send a notification when a window reaches the warning or critical percentage.</description>
+    </key>
+    <key name="notify-resets" type="b">
+      <default>true</default>
+      <summary>Notify when a limit resets</summary>
+      <description>Send a notification when a window that reached the warning percentage resets.</description>
+    </key>
+    <key name="notify-expiring" type="b">
+      <default>true</default>
+      <summary>Notify about expiring limit resets</summary>
+      <description>Send a notification when an unused limit reset runs out within a day.</description>
+    </key>
+    <key name="warning-percent" type="i">
+      <range min="1" max="100"/>
+      <default>80</default>
+      <summary>Warning percentage</summary>
+      <description>Used percentage at which a window turns yellow and notifies.</description>
+    </key>
+    <key name="critical-percent" type="i">
+      <range min="1" max="100"/>
+      <default>95</default>
+      <summary>Critical percentage</summary>
+      <description>Used percentage at which a window turns red and notifies.</description>
+    </key>
+    <key name="show-session" type="b">
+      <default>true</default>
+      <summary>Show the current session</summary>
+      <description>Show the last Claude Code session's project, model, context, cost and prompt cache in the menu.</description>
+    </key>
+  </schema>
+</schemalist>
