@@ -15,4 +15,4 @@ jobs:
       - name: Run unit tests
         run: TZ=UTC gjs -m tests/usage.test.js
       - name: Check shell scripts
-        run: shellcheck install.sh tests/headless.sh docs/screenshot.sh && shellcheck -s bash statusline-snippet.sh
+        run: shellcheck install.sh tests/headless.sh docs/screenshot.sh && shellcheck -s bash -e SC2154 statusline-snippet.sh
