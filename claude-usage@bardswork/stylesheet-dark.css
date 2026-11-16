@@ -1,0 +1,13 @@
+/* Dark shell style. Close to a limit: GNOME palette yellow 2 and red 1. */
+.claude-usage-warning {
+    color: #f8e45c;
+}
+
+.claude-usage-critical {
+    color: #f66151;
+}
+
+/* The limit that applies right now, per the usage report */
+.claude-usage-active {
+    font-weight: bold;
+}

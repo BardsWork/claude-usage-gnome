@@ -32,14 +32,19 @@ export function fableWindow(report) {
     return {used_percentage: row.percent, resets_at: resets ? resets.to_unix() : null};
 }
 
-/** Reads the Fable weekly window from the saved usage report. Null if missing or unreadable. */
-export function readFable(path) {
+/** Reads the saved usage report. Null if the file is missing or half written. */
+export function readReport(path) {
     try {
         const [, bytes] = Gio.File.new_for_path(path).load_contents(null);
-        return fableWindow(JSON.parse(new TextDecoder().decode(bytes)));
+        return JSON.parse(new TextDecoder().decode(bytes));
     } catch {
         return null;
     }
+}
+
+/** Reads the Fable weekly window from the saved usage report. Null if missing or unreadable. */
+export function readFable(path) {
+    return fableWindow(readReport(path));
 }
 
 /** A usage window ("five_hour" or "seven_day") as a short percentage. */
@@ -83,12 +88,7 @@ export function resetGrants(report, now) {
 
 /** Reads the limit resets left from the saved usage report. Empty if missing or unreadable. */
 export function readResets(path, now) {
-    try {
-        const [, bytes] = Gio.File.new_for_path(path).load_contents(null);
-        return resetGrants(JSON.parse(new TextDecoder().decode(bytes)), now);
-    } catch {
-        return [];
-    }
+    return resetGrants(readReport(path), now);
 }
 
 /** Limit resets as one line, for example "1 full reset, use by Thu Dec 10". */
@@ -98,4 +98,77 @@ export function resetsText(grants) {
         if (g.ends_at === null) return what;
         return `${what}, use by ${GLib.DateTime.new_from_unix_local(g.ends_at).format('%a %b %-d')}`;
     }).join('; ');
+}
+
+/** Window lengths in seconds, for the pace. */
+export const WINDOW_SECONDS = {five_hour: 5 * 3600, seven_day: 7 * 86400};
+
+const LEVELS = ['normal', 'warning', 'critical'];
+// Used percentages at which a window counts as a warning or critical without a server severity
+const WARNING_PERCENT = 80;
+const CRITICAL_PERCENT = 95;
+
+/**
+ * The server's severity and whether it's the limit that applies now, for the session, weekly
+ * and Fable rows of a saved usage report: {five_hour, seven_day, fable}, each
+ * {severity, active} or missing.
+ */
+export function limitStates(report) {
+    const states = {};
+    for (const l of Array.isArray(report?.limits) ? report.limits : []) {
+        let key = null;
+        if (l?.kind === 'session') key = 'five_hour';
+        else if (l?.kind === 'weekly_all') key = 'seven_day';
+        else if (l?.kind === 'weekly_scoped' && /^fable\b/i.test(String(l.scope?.model?.display_name ?? ''))) key = 'fable';
+        if (key && !states[key])
+            states[key] = {severity: typeof l.severity === 'string' ? l.severity : null, active: l.is_active === true};
+    }
+    return states;
+}
+
+/**
+ * How close a window is to its limit: 'normal', 'warning' or 'critical'. The worse of the
+ * server's severity (anything but 'normal' counts as a warning) and the used percentage.
+ */
+export function limitLevel(win, severity, now) {
+    if (!win || (win.resets_at && win.resets_at < now)) return 'normal';
+    const pct = win.used_percentage;
+    let level = pct >= CRITICAL_PERCENT ? 2 : pct >= WARNING_PERCENT ? 1 : 0;
+    if (typeof severity === 'string' && severity !== 'normal') level = Math.max(level, 1);
+    return LEVELS[level];
+}
+
+/** The worse of several levels from limitLevel(). */
+export function worstLevel(...levels) {
+    return LEVELS[Math.max(0, ...levels.map(l => LEVELS.indexOf(l)))];
+}
+
+/** Where this week's usage went, by surface: [{name, percent}], largest first. Empty if none. */
+export function breakdown(report) {
+    const rows = report?.seven_day_breakdown?.rows;
+    if (!Array.isArray(rows)) return [];
+    return rows
+        .filter(r => typeof r?.percent === 'number' && typeof (r.display_name ?? r.key) === 'string')
+        .map(r => ({name: r.display_name ?? r.key, percent: r.percent}))
+        .sort((a, b) => b.percent - a.percent);
+}
+
+/**
+ * Whether a window is being used faster than it refills: '' when it's too early in the window
+ * to tell or the window is unknown, else 'below pace', 'on pace', 'at limit', or 'above pace'
+ * with the time it would hit the limit at this rate.
+ */
+export function paceText(win, length, now) {
+    if (!win?.resets_at || !length || win.resets_at < now) return '';
+    const elapsed = length - (win.resets_at - now);
+    // Too early in the window, the ratio is noise
+    if (elapsed < length * 0.1) return '';
+    const used = win.used_percentage;
+    if (used >= 100) return 'at limit';
+    const ratio = used / (elapsed / length * 100);
+    if (ratio < 0.9) return 'below pace';
+    if (ratio <= 1.1) return 'on pace';
+    // Above pace always hits the limit before the reset: (100 - used) / rate < time left
+    const hitAt = Math.round(now + (100 - used) / (used / elapsed));
+    return `above pace, limit around ${GLib.DateTime.new_from_unix_local(hitAt).format('%a %H:%M')}`;
 }
